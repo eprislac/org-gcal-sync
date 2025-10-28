@@ -20,7 +20,7 @@
 
 ```lua
 {
-  "yourusername/org-gcal-sync",
+  "eprislac/org-gcal-sync",
   dependencies = { "nvim-orgmode/orgmode", "jmbuhr/org-roam.nvim" },
   config = function()
     require("org-gcal-sync").setup({
