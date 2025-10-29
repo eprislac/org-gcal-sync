@@ -9,6 +9,9 @@ jobs:
         uses: rhysd/action-setup-vim@v1
         with:
           version: stable
+      - name: Install NeoVim
+      - run: |
+          apt-get install neovim
       - name: Install plenary
         run: |
           git clone https://github.com/nvim-lua/plenary.nvim ~/.local/share/nvim/plugged/plenary.nvim
