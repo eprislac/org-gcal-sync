@@ -152,7 +152,8 @@ function M.import_gcal()
   for line in out:gmatch("[^\r\n]+") do
     vim.notify(line, vim.log.levels.INFO)
     local start_date, start_time, end_date, end_time, title, location, description =
-      line:match("^(.-)\t(.-)\t(.-)\t(.-)\t(.-)\t(.-)\t(.*)$")
+      -- line:match("^(.-)\t(.-)\t(.-)\t(.-)\t(.-)\t(.-)\t(.*)$")
+      split_string(line, "\t")
     if not (start_date and title and title ~= "") then goto continue end
 
     local ts = start_date .. (start_time ~= "" and " " .. start_time or "")
@@ -211,6 +212,23 @@ function M.export_org()
   end
 
   vim.notify("Exported " .. added .. " tasks", vim.log.levels.INFO)
+end
+
+function split_string(input_string, delimiter)
+  local result = {}
+  local start_index = 1
+  local delimiter_start, delimiter_end = string.find(input_string, delimiter, start_index, true) -- The 'true' is crucial
+
+  while delimiter_start do
+    table.insert(result, string.sub(input_string, start_index, delimiter_start - 1))
+    start_index = delimiter_end + 1
+    delimiter_start, delimiter_end = string.find(input_string, delimiter, start_index, true)
+  end
+
+  -- Insert the final substring
+  table.insert(result, string.sub(input_string, start_index))
+
+  return result
 end
 
 function M.sync()
