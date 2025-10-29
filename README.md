@@ -1,7 +1,7 @@
 # org-gcal-sync
 
 **Full bidirectional sync**: `org-roam` ↔ Google Calendar with **agenda integration**, **backlinks**, and **unit tests**.
-
+WIP (VERY BROKEN ATM, DO NOT INSTALL)
 ---
 
 ## Features
