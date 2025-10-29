@@ -15,7 +15,7 @@ function M.check()
       }
     )
   end
- 
+  health.stop() 
   -- local sync = require("org-gcal-sync")
   -- sync.checkhealth()
 end
