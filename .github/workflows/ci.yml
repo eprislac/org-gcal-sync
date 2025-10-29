@@ -5,11 +5,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: install neovim
+      - name: Install Vim
         uses: rhysd/action-setup-vim@v1
         with:
           version: stable
-      - name: intall nvim
+      - name: Install Neovim
         run: |
           sudo apt-get install neovim
       - name: Install plenary
