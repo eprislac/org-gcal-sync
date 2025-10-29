@@ -9,6 +9,7 @@ jobs:
         uses: rhysd/action-setup-vim@v1
         with:
           version: stable
+      - name: Intall NVim
         run: |
           apt-get install neovim
       - name: Install plenary
