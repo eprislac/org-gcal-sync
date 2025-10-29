@@ -1,0 +1,8 @@
+# Neovim data
+token.json
+
+# Test artifacts
+*.tmp
+
+# OS files
+.DS_Store

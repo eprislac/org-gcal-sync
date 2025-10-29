@@ -1,5 +1,8 @@
 -- lua/org-gcal-sync/utils.lua
 local M = {}
+local gcal_api = require("org-gcal-sync.gcal_api")
+local conflict = require("org-gcal-sync.conflict")
+local dashboard = require("org-gcal-sync.dashboard")
 
 -- We'll get config from init.lua later
 local cfg = {}
@@ -14,17 +17,61 @@ local function norm_time(ts)
   return ts and ts:gsub("^(%d%d%d%d%-%d%d%-%d%d)%s+(%d?%d:%d%d).*", "%1 %2") or nil
 end
 
-M.make_key = function(title, time)
+M.make_key = function(title, time, event_id)
+  if event_id then
+    return event_id
+  end
   return (title or ""):lower() .. "||" .. (norm_time(time) or "")
 end
 
-M.get_gcal_events = function()
-  local out = vim.fn.system("gcalcli agenda --tsv --nodetail 2>/dev/null || true")
+local function parse_gcal_datetime(dt)
+  if not dt then return nil end
+  if dt.dateTime then
+    local ts = dt.dateTime:gsub("T", " "):gsub("[+-]%d%d:%d%d$", ""):gsub("Z$", "")
+    return ts:match("^%d%d%d%d%-%d%d%-%d%d %d%d:%d%d")
+  elseif dt.date then
+    return dt.date .. " 00:00"
+  end
+  return nil
+end
+
+M.get_gcal_events = function(calendar_id)
+  local time_min = os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() - 7 * 24 * 60 * 60)
+  local time_max = os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() + 90 * 24 * 60 * 60)
+  
+  local events, err = gcal_api.list_events(time_min, time_max, calendar_id)
+  if not events then
+    vim.notify("Failed to fetch events: " .. (err or "unknown error"), vim.log.levels.ERROR)
+    dashboard.add_error("Failed to fetch events: " .. (err or "unknown error"))
+    return {}
+  end
+
   local ev = {}
-  for line in out:gmatch("[^\r\n]+") do
-    local date, start, _, _, title = line:match("^(.-)\t(.-)\t.-%t.-%t(.-)$")
-    if title and title ~= "" then
-      ev[M.make_key(title, date .. " " .. (start ~= "" and start or "00:00"))] = true
+  for _, event in ipairs(events) do
+    if event.summary then
+      local instances = { event }
+      
+      if cfg.sync_recurring_events and event.recurrence then
+        instances = gcal_api.expand_recurring_event(event, time_min, time_max)
+      end
+      
+      for _, instance in ipairs(instances) do
+        local ts = parse_gcal_datetime(instance.start)
+        if ts then
+          local key = M.make_key(instance.summary, ts, instance.id)
+          ev[key] = {
+            id = instance.id,
+            title = instance.summary,
+            timestamp = ts,
+            location = instance.location or "",
+            description = instance.description or "",
+            updated = instance.updated,
+            calendar_id = calendar_id or "primary",
+            recurring_event_id = event.recurringEventId,
+            recurrence = event.recurrence,
+          }
+        end
+      end
     end
   end
   return ev
@@ -35,16 +82,41 @@ M.get_existing_roam_events = function()
   local files = vim.fn.glob(cfg.agenda_dir .. "/*.org", false, true)
   for _, f in ipairs(files) do
     local lines = vim.fn.readfile(f)
-    local title, ts = nil, nil
+    local title, ts, event_id, gcal_updated, calendar_id, file_modified = nil, nil, nil, nil, nil, nil
     for _, l in ipairs(lines) do
       local t = l:gsub("^%s*(.-)%s*$", "%1")
       if t:match("^%*+%s") and not title then
         title = t:match("^%*+%s+(.*)")
       elseif t:match("^SCHEDULED:") or t:match("^DEADLINE:") then
         ts = t:match("<([^>]+)>")
+      elseif t:match("^:GCAL_ID:") then
+        event_id = t:match("^:GCAL_ID:%s*(.+)%s*$")
+      elseif t:match("^:GCAL_UPDATED:") then
+        gcal_updated = t:match("^:GCAL_UPDATED:%s*(.+)%s*$")
+      elseif t:match("^:CALENDAR_ID:") then
+        calendar_id = t:match("^:CALENDAR_ID:%s*(.+)%s*$")
       end
     end
-    if title and ts then map[M.make_key(title, ts)] = f end
+    
+    if vim.fn.filereadable(f) == 1 then
+      local stat = vim.loop.fs_stat(f)
+      if stat then
+        file_modified = os.date("!%Y-%m-%dT%H:%M:%SZ", stat.mtime.sec)
+      end
+    end
+    
+    if title and ts then
+      local key = M.make_key(title, ts, event_id)
+      map[key] = {
+        path = f,
+        title = title,
+        timestamp = ts,
+        event_id = event_id,
+        gcal_updated = gcal_updated,
+        calendar_id = calendar_id or "primary",
+        modified = file_modified,
+      }
+    end
   end
   return map
 end
@@ -119,13 +191,30 @@ M.write_roam_event_note = function(path, data)
     "",
     "* " .. data.title,
     "  SCHEDULED: <" .. data.timestamp .. ">",
+    "  :PROPERTIES:",
   }
-  if data.location and data.location ~= "" then
-    table.insert(lines, "  :PROPERTIES:")
-    table.insert(lines, "  :LOCATION: " .. data.location)
-    table.insert(lines, "  :END:")
+  if data.event_id then
+    table.insert(lines, "  :GCAL_ID: " .. data.event_id)
   end
+  if data.calendar_id then
+    table.insert(lines, "  :CALENDAR_ID: " .. data.calendar_id)
+  end
+  if data.location and data.location ~= "" then
+    table.insert(lines, "  :LOCATION: " .. data.location)
+  end
+  if data.updated then
+    table.insert(lines, "  :GCAL_UPDATED: " .. data.updated)
+  end
+  if data.recurring_event_id then
+    table.insert(lines, "  :RECURRING_EVENT_ID: " .. data.recurring_event_id)
+  end
+  if data.recurrence then
+    table.insert(lines, "  :RECURRENCE: " .. vim.json.encode(data.recurrence))
+  end
+  table.insert(lines, "  :END:")
+  
   if data.description and data.description ~= "" then
+    table.insert(lines, "")
     vim.list_extend(lines, vim.split("  " .. data.description:gsub("\n", "\n  "), "\n"))
   end
   table.insert(lines, "")
@@ -141,83 +230,260 @@ end
 
 -- IMPORT ---------------------------------------------------------------------
 function M.import_gcal()
+  dashboard.set_in_progress(true)
   local existing = M.get_existing_roam_events()
-  local out = vim.fn.system("gcalcli agenda --tsv 2>/dev/null || true")
-  if vim.v.shell_error ~= 0 then
-    vim.notify("gcalcli failed", vim.log.levels.ERROR)
-    return
-  end
-  vim.notify(out, vim.log.levels.INFO)
-  local imported = 0
-  for line in out:gmatch("[^\r\n]+") do
-    vim.notify(line, vim.log.levels.INFO)
-    local start_date, start_time, end_date, end_time, title, location, description =
-      -- line:match("^(.-)\t(.-)\t(.-)\t(.-)\t(.-)\t(.-)\t(.*)$")
-      split_string(line, "\t")
-    if not (start_date and title and title ~= "") then goto continue end
-
-    local ts = start_date .. (start_time ~= "" and " " .. start_time or "")
-    local key = M.make_key(title, ts)
-    if existing[key] then goto continue end
-
-    local file = cfg.agenda_dir .. "/" .. slugify(title)
-    local opts = {
-      title = title,
-      timestamp = ts,
-      location = location,
-      description = description,
-    }
-    local success,result = pcall(M.write_roam_event_note, file, opts)
-    if not (success) then
-      vim.notify('Failed to write roam event', vim.log.levels.ERROR)
-      vim.notify(vim.inspect(opts), vim.log.levels.ERROR)
+  
+  local calendars = cfg.calendars or { "primary" }
+  local total_imported = 0
+  local total_updated = 0
+  local total_deleted = 0
+  local total_conflicts = 0
+  
+  for _, calendar_id in ipairs(calendars) do
+    local gcal_events = M.get_gcal_events(calendar_id)
+    
+    if not gcal_events then
+      vim.notify("Failed to fetch Google Calendar events from " .. calendar_id, vim.log.levels.ERROR)
+      dashboard.add_error("Failed to fetch events from calendar: " .. calendar_id)
       goto continue
     end
-    imported = imported + 1
+
+    local imported = 0
+    local updated = 0
+
+    -- Import new and update existing events
+    for key, event in pairs(gcal_events) do
+      local existing_event = existing[key]
+      
+      if not existing_event then
+        local file = cfg.agenda_dir .. "/" .. slugify(event.title)
+        local opts = {
+          title = event.title,
+          timestamp = event.timestamp,
+          location = event.location,
+          description = event.description,
+          event_id = event.id,
+          updated = event.updated,
+          calendar_id = calendar_id,
+          recurring_event_id = event.recurring_event_id,
+          recurrence = event.recurrence,
+        }
+        local success, result = pcall(M.write_roam_event_note, file, opts)
+        if success then
+          imported = imported + 1
+        else
+          vim.notify('Failed to write roam event: ' .. tostring(result), vim.log.levels.ERROR)
+          dashboard.add_error('Failed to write event: ' .. event.title)
+        end
+      elseif existing_event and event.updated ~= existing_event.gcal_updated then
+        local choice, resolved_event = conflict.resolve_conflict(
+          existing_event,
+          event,
+          cfg.conflict_resolution or "ask"
+        )
+        
+        if choice == "remote" then
+          local opts = {
+            title = event.title,
+            timestamp = event.timestamp,
+            location = event.location,
+            description = event.description,
+            event_id = event.id,
+            updated = event.updated,
+            calendar_id = calendar_id,
+            recurring_event_id = event.recurring_event_id,
+            recurrence = event.recurrence,
+          }
+          local success, result = pcall(M.write_roam_event_note, existing_event.path, opts)
+          if success then
+            updated = updated + 1
+          else
+            vim.notify('Failed to update roam event: ' .. tostring(result), vim.log.levels.ERROR)
+            dashboard.add_error('Failed to update event: ' .. event.title)
+          end
+        elseif choice == "skip" then
+          total_conflicts = total_conflicts + 1
+        end
+      end
+      
+      existing[key] = nil
+    end
+
+    total_imported = total_imported + imported
+    total_updated = total_updated + updated
+    
+    dashboard.set_calendar_stats(calendar_id, {
+      total = imported + updated,
+      last_sync = os.date("%Y-%m-%d %H:%M:%S"),
+    })
+    
     ::continue::
   end
 
-  vim.notify("Imported " .. imported .. " events", vim.log.levels.INFO)
+  -- Delete events that no longer exist in Google Calendar
+  local deleted = 0
+  for key, event in pairs(existing) do
+    if event.event_id and vim.fn.filereadable(event.path) == 1 then
+      vim.fn.delete(event.path)
+      deleted = deleted + 1
+    end
+  end
+  total_deleted = deleted
+
+  dashboard.update_stats({
+    imported = total_imported,
+    updated = total_updated,
+    deleted = total_deleted,
+    conflicts = total_conflicts,
+  })
+  dashboard.set_in_progress(false)
+
+  local msg = string.format("Imported: %d, Updated: %d, Deleted: %d, Conflicts: %d", 
+    total_imported, total_updated, total_deleted, total_conflicts)
+  vim.notify(msg, vim.log.levels.INFO)
+  
+  if cfg.show_sync_status then
+    vim.defer_fn(function()
+      dashboard.show()
+    end, 500)
+  end
 end
 
 -- EXPORT ---------------------------------------------------------------------
+local function parse_org_timestamp(ts_str)
+  if not ts_str then return nil end
+  local year, month, day, hour, min = ts_str:match("(%d%d%d%d)%-(%d%d)%-(%d%d)%s+(%d%d):(%d%d)")
+  if not year then
+    year, month, day = ts_str:match("(%d%d%d%d)%-(%d%d)%-(%d%d)")
+    hour, min = "00", "00"
+  end
+  if not year then return nil end
+  
+  local timestamp = os.time({
+    year = tonumber(year),
+    month = tonumber(month),
+    day = tonumber(day),
+    hour = tonumber(hour),
+    min = tonumber(min),
+  })
+  
+  return os.date("!%Y-%m-%dT%H:%M:%SZ", timestamp)
+end
+
 function M.export_org()
-  local gcal = M.get_gcal_events()
+  dashboard.set_in_progress(true)
+  local gcal_events = {}
+  
+  for _, calendar_id in ipairs(cfg.calendars or { "primary" }) do
+    local cal_events = M.get_gcal_events(calendar_id)
+    for k, v in pairs(cal_events) do
+      gcal_events[k] = v
+    end
+  end
+  
   local added = 0
+  local updated = 0
+  local exported = 0
 
   for _, base in ipairs(cfg.org_roam_dirs) do
+    local calendar_id = cfg.per_directory_calendars[base] or "primary"
+    
     local files = vim.fn.glob(vim.fn.expand(base) .. "/**/*.org", false, true)
     for _, f in ipairs(files) do
       local lines = vim.fn.readfile(f)
-      local title, ts = nil, nil
+      local title, ts, event_id, location, description = nil, nil, nil, "", ""
+      local in_properties = false
+      
       for _, l in ipairs(lines) do
         local t = l:gsub("^%s*(.-)%s*$", "%1")
         if t:match("^%*+%s") and not title then
           title = t:match("^%*+%s+(.*)")
         elseif t:match("^SCHEDULED:") or t:match("^DEADLINE:") then
           ts = t:match("<([^>]+)>")
+        elseif t == ":PROPERTIES:" then
+          in_properties = true
+        elseif t == ":END:" then
+          in_properties = false
+        elseif in_properties and t:match("^:GCAL_ID:") then
+          event_id = t:match("^:GCAL_ID:%s*(.+)%s*$")
+        elseif in_properties and t:match("^:LOCATION:") then
+          location = t:match("^:LOCATION:%s*(.+)%s*$") or ""
+        elseif not in_properties and not t:match("^[#:]") and not t:match("^%*") and t ~= "" then
+          if description ~= "" then description = description .. "\n" end
+          description = description .. t:gsub("^%s+", "")
         end
       end
+      
       if title and ts then
-        local key = M.make_key(title, ts)
-        if not gcal[key] then
-          local cmd = string.format('gcalcli add --title %s --when %s', vim.fn.shellescape(title), vim.fn.shellescape(ts))
-          if vim.fn.system(cmd) == "" then
+        local start_time = parse_org_timestamp(ts)
+        if not start_time then goto continue end
+        
+        local event_data = {
+          summary = title,
+          start = {
+            dateTime = start_time,
+            timeZone = "UTC",
+          },
+          ["end"] = {
+            dateTime = os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() + 3600),
+            timeZone = "UTC",
+          },
+        }
+        
+        if location and location ~= "" then
+          event_data.location = location
+        end
+        
+        if description and description ~= "" then
+          event_data.description = description
+        end
+        
+        local key = M.make_key(title, ts, event_id)
+        
+        if event_id and gcal_events[event_id] then
+          local result, err = gcal_api.update_event(event_id, event_data, calendar_id)
+          if result then
+            updated = updated + 1
+            exported = exported + 1
+          else
+            vim.notify("Failed to update event: " .. (err or "unknown error"), vim.log.levels.WARN)
+            dashboard.add_error("Failed to update: " .. title)
+          end
+        elseif not gcal_events[key] then
+          local result, err = gcal_api.create_event(event_data, calendar_id)
+          if result then
             added = added + 1
-            gcal[key] = true
+            exported = exported + 1
+            gcal_events[key] = true
+          else
+            vim.notify("Failed to create event: " .. (err or "unknown error"), vim.log.levels.WARN)
+            dashboard.add_error("Failed to create: " .. title)
           end
         end
       end
+      ::continue::
     end
   end
 
-  vim.notify("Exported " .. added .. " tasks", vim.log.levels.INFO)
+  dashboard.update_stats({
+    exported = exported,
+  })
+  dashboard.set_in_progress(false)
+
+  local msg = string.format("Added: %d, Updated: %d", added, updated)
+  vim.notify(msg, vim.log.levels.INFO)
+  
+  if cfg.show_sync_status then
+    vim.defer_fn(function()
+      dashboard.show()
+    end, 500)
+  end
 end
 
 function split_string(input_string, delimiter)
   local result = {}
   local start_index = 1
-  local delimiter_start, delimiter_end = string.find(input_string, delimiter, start_index, true) -- The 'true' is crucial
+  local delimiter_start, delimiter_end = string.find(input_string, delimiter, start_index, true)
 
   while delimiter_start do
     table.insert(result, string.sub(input_string, start_index, delimiter_start - 1))
@@ -225,7 +491,6 @@ function split_string(input_string, delimiter)
     delimiter_start, delimiter_end = string.find(input_string, delimiter, start_index, true)
   end
 
-  -- Insert the final substring
   table.insert(result, string.sub(input_string, start_index))
 
   return result
@@ -234,6 +499,21 @@ end
 function M.sync()
   M.export_org()
   M.import_gcal()
+end
+
+function M.delete_event(event_id)
+  if not event_id then
+    vim.notify("No event ID provided", vim.log.levels.ERROR)
+    return false
+  end
+  
+  local result, err = gcal_api.delete_event(event_id)
+  if not result then
+    vim.notify("Failed to delete event: " .. (err or "unknown error"), vim.log.levels.ERROR)
+    return false
+  end
+  
+  return true
 end
 
 return M

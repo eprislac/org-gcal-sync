@@ -8,6 +8,7 @@ describe("org-gcal-sync backlinks", function()
   local roam_dir = tmp .. "/roam"
   local event_file = agenda_dir .. "/team-standup.org"
   local note_file = roam_dir .. "/project-x.org"
+  local gcal_api
 
   before_each(function()
     vim.fn.mkdir(agenda_dir, "p")
@@ -23,12 +24,20 @@ describe("org-gcal-sync backlinks", function()
       "We have Team Standup every day.",
     }, note_file)
 
-    -- Mock gcalcli to return one event
-    vim.fn.system = function(cmd)
-      if cmd:match("gcalcli agenda") then
-        return "2025-11-01\t14:00\t15:00\tlink\tTeam Standup\tOffice\tDaily sync"
-      end
-      return ""
+    -- Mock gcal_api
+    gcal_api = require("org-gcal-sync.gcal_api")
+    gcal_api.list_events = function(time_min, time_max)
+      return {
+        {
+          id = "event123",
+          summary = "Team Standup",
+          start = { dateTime = "2025-11-01T14:00:00Z" },
+          ["end"] = { dateTime = "2025-11-01T15:00:00Z" },
+          location = "Office",
+          description = "Daily sync",
+          updated = "2025-10-29T10:00:00Z",
+        }
+      }
     end
   end)
 
