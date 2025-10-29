@@ -43,8 +43,7 @@ function M.setup(opts)
     M.import_gcal = utils.import_gcal
     M.export_org = utils.export_org
   else
-    vim.notify("org-gcal-sync: utils failed to load: " .. u:w
-    tils, vim.log.levels.ERROR)
+    vim.notify("org-gcal-sync: utils failed to load: " .. utils, vim.log.levels.ERROR)
   end
 end
 
