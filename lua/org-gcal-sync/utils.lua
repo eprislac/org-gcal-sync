@@ -160,12 +160,18 @@ function M.import_gcal()
     if existing[key] then goto continue end
 
     local file = cfg.agenda_dir .. "/" .. slugify(title)
-    M.write_roam_event_note(file, {
+    local opts = {
       title = title,
       timestamp = ts,
       location = location,
       description = description,
-    })
+    }
+    local success,result = pcall(M.write_roam_event_note, file, opts)
+    if not (success) then
+      vim.notify('Failed to write roam event', vim.log.levels.ERROR)
+      vim.notify(vim.inspect(opts), vim.log.levels.ERROR)
+      goto continue
+    end
     imported = imported + 1
     ::continue::
   end
