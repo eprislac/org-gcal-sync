@@ -150,6 +150,7 @@ function M.import_gcal()
 
   local imported = 0
   for line in out:gmatch("[^\r\n]+") do
+    vim.notify(line, vim.log_levels.INFO)
     local start_date, start_time, end_date, end_time, title, location, description =
       line:match("^(.-)\t(.-)\t(.-)\t(.-)\t(.-)\t(.-)\t(.*)$")
     if not (start_date and title and title ~= "") then goto continue end
