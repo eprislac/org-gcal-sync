@@ -147,7 +147,7 @@ function M.import_gcal()
     vim.notify("gcalcli failed", vim.log.levels.ERROR)
     return
   end
-
+  vim.notify(out, vim.log.levels.INFO)
   local imported = 0
   for line in out:gmatch("[^\r\n]+") do
     vim.notify(line, vim.log_levels.INFO)
