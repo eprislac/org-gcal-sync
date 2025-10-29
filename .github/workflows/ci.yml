@@ -1,17 +1,17 @@
-name: Test
+name: test
 on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Neovim
+      - name: install neovim
         uses: rhysd/action-setup-vim@v1
         with:
           version: stable
-      - name: Intall NVim
+      - name: intall nvim
         run: |
-          apt-get install neovim
+          sudo apt-get install neovim
       - name: Install plenary
         run: |
           git clone https://github.com/nvim-lua/plenary.nvim ~/.local/share/nvim/plugged/plenary.nvim
