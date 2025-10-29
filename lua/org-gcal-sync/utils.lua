@@ -150,11 +150,11 @@ function M.import_gcal()
 
   local imported = 0
   for line in out:gmatch("[^\r\n]+") do
-    local date, start, _, _, title, location, description =
+    local start_date, start_time, end_date, end_time, title, location, description =
       line:match("^(.-)\t(.-)\t(.-)\t(.-)\t(.-)\t(.-)\t(.*)$")
-    if not (date and title and title ~= "") then goto continue end
+    if not (start_date and title and title ~= "") then goto continue end
 
-    local ts = date .. (start ~= "" and " " .. start or "")
+    local ts = start_date .. (start_time ~= "" and " " .. start_time or "")
     local key = M.make_key(title, ts)
     if existing[key] then goto continue end
 
