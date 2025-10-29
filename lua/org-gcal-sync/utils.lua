@@ -1,6 +1,13 @@
 -- lua/org-gcal-sync/utils.lua
 local M = {}
-local cfg = require("org-gcal-sync").config
+
+-- We'll get config from init.lua later
+local cfg = {}
+
+-- === CONFIG INJECTION ===
+function M.set_config(config)
+  cfg = config
+end
 
 -- Helpers --------------------------------------------------------------------
 local function norm_time(ts)
@@ -175,33 +182,4 @@ function M.export_org()
     for _, f in ipairs(files) do
       local lines = vim.fn.readfile(f)
       local title, ts = nil, nil
-      for _, l in ipairs(lines) do
-        local t = l:gsub("^%s*(.-)%s*$", "%1")
-        if t:match("^%*+%s") and not title then
-          title = t:match("^%*+%s+(.*)")
-        elseif t:match("^SCHEDULED:") or t:match("^DEADLINE:") then
-          ts = t:match("<([^>]+)>")
-        end
-      end
-      if title and ts then
-        local key = M.make_key(title, ts)
-        if not gcal[key] then
-          local cmd = string.format('gcalcli add --title %s --when %s', vim.fn.shellescape(title), vim.fn.shellescape(ts))
-          if vim.fn.system(cmd) == "" then
-            added = added + 1
-            gcal[key] = true
-          end
-        end
-      end
-    end
-  end
-
-  vim.notify("Exported " .. added .. " tasks", vim.log.levels.INFO)
-end
-
-function M.sync()
-  M.export_org()
-  M.import_gcal()
-end
-
-return M
+      for _, l in ipairs
