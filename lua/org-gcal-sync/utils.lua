@@ -745,12 +745,6 @@ function M.export_org()
         local start_time, end_time = parse_org_timestamp(ts)
         if not start_time then goto continue end
         
-        -- Skip if this TODO already has a GCAL_ID and exists on calendar
-        if event_id and gcal_events_by_id[event_id] then
-          skipped_existing = skipped_existing + 1
-          goto continue
-        end
-        
         -- Build event data
         local event_data = {
           summary = title,
