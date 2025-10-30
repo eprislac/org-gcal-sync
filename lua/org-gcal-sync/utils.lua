@@ -410,7 +410,14 @@ function M.export_org()
   for _, base in ipairs(cfg.org_roam_dirs) do
     local calendar_id = cfg.per_directory_calendars[base] or "primary"
     
-    local files = vim.fn.glob(vim.fn.expand(base) .. "/**/*.org", false, true)
+    -- Expand path and use globpath for better recursive search
+    local expanded_base = vim.fn.expand(base)
+    local files = vim.fn.globpath(expanded_base, "**/*.org", false, true)
+    
+    if #files > 0 then
+      vim.notify(string.format("Scanning %d org files in %s", #files, expanded_base), vim.log.levels.INFO)
+    end
+    
     for _, f in ipairs(files) do
       local lines = vim.fn.readfile(f)
       local title, ts, event_id, location, description, is_todo = nil, nil, nil, "", "", false
@@ -418,12 +425,29 @@ function M.export_org()
       
       for _, l in ipairs(lines) do
         local t = l:gsub("^%s*(.-)%s*$", "%1")
-        if t:match("^%*+%s+TODO%s") or t:match("^%*+%s+NEXT%s") then
+        -- Check for TODO/NEXT items first
+        if t:match("^%*+%s+TODO") or t:match("^%*+%s+NEXT") then
           is_todo = true
-          title = t:match("^%*+%s+TODO%s+(.*)") or t:match("^%*+%s+NEXT%s+(.*)")
+          -- Extract title after TODO/NEXT keyword
+          local extracted = t:match("^%*+%s+TODO%s+(.*)")
+          if not extracted then
+            extracted = t:match("^%*+%s+TODO$") and "" or nil
+          end
+          if not extracted then
+            extracted = t:match("^%*+%s+NEXT%s+(.*)")
+          end
+          if not extracted then
+            extracted = t:match("^%*+%s+NEXT$") and "" or nil
+          end
+          if extracted then
+            title = extracted
+          end
         elseif t:match("^%*+%s") and not title then
           title = t:match("^%*+%s+(.*)")
-        elseif t:match("^SCHEDULED:") or t:match("^DEADLINE:") then
+        end
+        
+        -- Parse other fields regardless of TODO status
+        if t:match("SCHEDULED:") or t:match("DEADLINE:") then
           ts = t:match("<([^>]+)>")
         elseif t == ":PROPERTIES:" then
           in_properties = true
