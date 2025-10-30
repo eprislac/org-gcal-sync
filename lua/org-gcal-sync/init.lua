@@ -11,7 +11,7 @@ M.config = {
   conflict_resolution = "ask",
   per_directory_calendars = {},
   webhook_port = nil,
-  show_sync_status = true,
+  show_sync_status = false,
 }
 
 -- Default commands (will be overridden in setup)

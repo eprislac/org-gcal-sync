@@ -98,7 +98,7 @@ function M.authenticate()
   end
 
   local redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
-  local scope = "https://www.googleapis.com/auth/calendar"
+  local scope = "https://www.googleapis.com/auth/calendar%20https://www.googleapis.com/auth/tasks"
   
   local auth_url = string.format(
     "https://accounts.google.com/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&access_type=offline&prompt=consent",
@@ -348,6 +348,178 @@ function M.expand_recurring_event(event, start_date, end_date)
   end
   
   return { event }
+end
+
+-- Google Tasks API functions
+function M.get_default_task_list()
+  local access_token, err = M.get_access_token()
+  if not access_token then
+    return nil, err
+  end
+
+  local response = curl.get("https://tasks.googleapis.com/tasks/v1/users/@me/lists", {
+    headers = {
+      ["Authorization"] = "Bearer " .. access_token,
+      ["Accept"] = "application/json",
+    },
+  })
+
+  if response.status ~= 200 then
+    return nil, "Failed to fetch task lists: " .. (response.body or "unknown error")
+  end
+
+  local ok, data = pcall(vim.json.decode, response.body)
+  if not ok or not data.items or #data.items == 0 then
+    return nil, "No task lists found"
+  end
+
+  return data.items[1].id
+end
+
+function M.create_task(task_data, task_list_id)
+  local access_token, err = M.get_access_token()
+  if not access_token then
+    return nil, err
+  end
+
+  if not task_list_id then
+    task_list_id, err = M.get_default_task_list()
+    if not task_list_id then
+      return nil, err
+    end
+  end
+
+  local url = string.format(
+    "https://tasks.googleapis.com/tasks/v1/lists/%s/tasks",
+    task_list_id
+  )
+
+  local response = curl.post(url, {
+    body = vim.json.encode(task_data),
+    headers = {
+      ["Authorization"] = "Bearer " .. access_token,
+      ["Content-Type"] = "application/json",
+    },
+  })
+
+  if response.status ~= 200 and response.status ~= 201 then
+    return nil, "Failed to create task: " .. (response.body or "unknown error")
+  end
+
+  local ok, data = pcall(vim.json.decode, response.body)
+  if not ok then
+    return nil, "Failed to parse create task response"
+  end
+
+  return data
+end
+
+function M.list_tasks(task_list_id)
+  local access_token, err = M.get_access_token()
+  if not access_token then
+    return nil, err
+  end
+
+  if not task_list_id then
+    task_list_id, err = M.get_default_task_list()
+    if not task_list_id then
+      return nil, err
+    end
+  end
+
+  local url = string.format(
+    "https://tasks.googleapis.com/tasks/v1/lists/%s/tasks",
+    task_list_id
+  )
+
+  local response = curl.get(url, {
+    headers = {
+      ["Authorization"] = "Bearer " .. access_token,
+      ["Accept"] = "application/json",
+    },
+  })
+
+  if response.status ~= 200 then
+    return nil, "Failed to fetch tasks: " .. (response.body or "unknown error")
+  end
+
+  local ok, data = pcall(vim.json.decode, response.body)
+  if not ok then
+    return nil, "Failed to parse tasks response"
+  end
+
+  return data.items or {}
+end
+
+function M.update_task(task_id, task_data, task_list_id)
+  local access_token, err = M.get_access_token()
+  if not access_token then
+    return nil, err
+  end
+
+  if not task_list_id then
+    task_list_id, err = M.get_default_task_list()
+    if not task_list_id then
+      return nil, err
+    end
+  end
+
+  local url = string.format(
+    "https://tasks.googleapis.com/tasks/v1/lists/%s/tasks/%s",
+    task_list_id,
+    task_id
+  )
+
+  local response = curl.put(url, {
+    body = vim.json.encode(task_data),
+    headers = {
+      ["Authorization"] = "Bearer " .. access_token,
+      ["Content-Type"] = "application/json",
+    },
+  })
+
+  if response.status ~= 200 then
+    return nil, "Failed to update task: " .. (response.body or "unknown error")
+  end
+
+  local ok, data = pcall(vim.json.decode, response.body)
+  if not ok then
+    return nil, "Failed to parse update task response"
+  end
+
+  return data
+end
+
+function M.delete_task(task_id, task_list_id)
+  local access_token, err = M.get_access_token()
+  if not access_token then
+    return nil, err
+  end
+
+  if not task_list_id then
+    task_list_id, err = M.get_default_task_list()
+    if not task_list_id then
+      return nil, err
+    end
+  end
+
+  local url = string.format(
+    "https://tasks.googleapis.com/tasks/v1/lists/%s/tasks/%s",
+    task_list_id,
+    task_id
+  )
+
+  local response = curl.delete(url, {
+    headers = {
+      ["Authorization"] = "Bearer " .. access_token,
+    },
+  })
+
+  if response.status ~= 204 and response.status ~= 200 then
+    return nil, "Failed to delete task: " .. (response.body or "unknown error")
+  end
+
+  return true
 end
 
 return M

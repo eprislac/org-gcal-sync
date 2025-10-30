@@ -42,7 +42,9 @@ M.get_gcal_events = function(calendar_id)
   local events, err = gcal_api.list_events(time_min, time_max, calendar_id)
   if not events then
     vim.notify("Failed to fetch events: " .. (err or "unknown error"), vim.log.levels.ERROR)
-    dashboard.add_error("Failed to fetch events: " .. (err or "unknown error"))
+    if cfg.show_sync_status then
+      dashboard.add_error("Failed to fetch events: " .. (err or "unknown error"))
+    end
     return {}
   end
 
@@ -241,7 +243,9 @@ end
 
 -- IMPORT ---------------------------------------------------------------------
 function M.import_gcal()
-  dashboard.set_in_progress(true)
+  if cfg.show_sync_status then
+    dashboard.set_in_progress(true)
+  end
   local existing = M.get_existing_roam_events()
   
   local calendars = cfg.calendars or { "primary" }
@@ -255,7 +259,9 @@ function M.import_gcal()
     
     if not gcal_events then
       vim.notify("Failed to fetch Google Calendar events from " .. calendar_id, vim.log.levels.ERROR)
-      dashboard.add_error("Failed to fetch events from calendar: " .. calendar_id)
+      if cfg.show_sync_status then
+        dashboard.add_error("Failed to fetch events from calendar: " .. calendar_id)
+      end
       goto continue
     end
 
@@ -284,7 +290,9 @@ function M.import_gcal()
           imported = imported + 1
         else
           vim.notify('Failed to write roam event: ' .. tostring(result), vim.log.levels.ERROR)
-          dashboard.add_error('Failed to write event: ' .. event.title)
+          if cfg.show_sync_status then
+            dashboard.add_error('Failed to write event: ' .. event.title)
+          end
         end
       elseif existing_event and event.updated ~= existing_event.gcal_updated then
         local choice, resolved_event = conflict.resolve_conflict(
@@ -310,7 +318,9 @@ function M.import_gcal()
             updated = updated + 1
           else
             vim.notify('Failed to update roam event: ' .. tostring(result), vim.log.levels.ERROR)
-            dashboard.add_error('Failed to update event: ' .. event.title)
+            if cfg.show_sync_status then
+              dashboard.add_error('Failed to update event: ' .. event.title)
+            end
           end
         elseif choice == "skip" then
           total_conflicts = total_conflicts + 1
@@ -323,10 +333,12 @@ function M.import_gcal()
     total_imported = total_imported + imported
     total_updated = total_updated + updated
     
-    dashboard.set_calendar_stats(calendar_id, {
-      total = imported + updated,
-      last_sync = os.date("%Y-%m-%d %H:%M:%S"),
-    })
+    if cfg.show_sync_status then
+      dashboard.set_calendar_stats(calendar_id, {
+        total = imported + updated,
+        last_sync = os.date("%Y-%m-%d %H:%M:%S"),
+      })
+    end
     
     ::continue::
   end
@@ -341,23 +353,19 @@ function M.import_gcal()
   end
   total_deleted = deleted
 
-  dashboard.update_stats({
-    imported = total_imported,
-    updated = total_updated,
-    deleted = total_deleted,
-    conflicts = total_conflicts,
-  })
-  dashboard.set_in_progress(false)
+  if cfg.show_sync_status then
+    dashboard.update_stats({
+      imported = total_imported,
+      updated = total_updated,
+      deleted = total_deleted,
+      conflicts = total_conflicts,
+    })
+    dashboard.set_in_progress(false)
+  end
 
   local msg = string.format("Imported: %d, Updated: %d, Deleted: %d, Conflicts: %d", 
     total_imported, total_updated, total_deleted, total_conflicts)
   vim.notify(msg, vim.log.levels.INFO)
-  
-  if cfg.show_sync_status then
-    vim.defer_fn(function()
-      dashboard.show()
-    end, 500)
-  end
 end
 
 -- EXPORT ---------------------------------------------------------------------
@@ -382,7 +390,9 @@ local function parse_org_timestamp(ts_str)
 end
 
 function M.export_org()
-  dashboard.set_in_progress(true)
+  if cfg.show_sync_status then
+    dashboard.set_in_progress(true)
+  end
   local gcal_events = {}
   
   for _, calendar_id in ipairs(cfg.calendars or { "primary" }) do
@@ -395,6 +405,7 @@ function M.export_org()
   local added = 0
   local updated = 0
   local exported = 0
+  local tasks_added = 0
 
   for _, base in ipairs(cfg.org_roam_dirs) do
     local calendar_id = cfg.per_directory_calendars[base] or "primary"
@@ -402,12 +413,15 @@ function M.export_org()
     local files = vim.fn.glob(vim.fn.expand(base) .. "/**/*.org", false, true)
     for _, f in ipairs(files) do
       local lines = vim.fn.readfile(f)
-      local title, ts, event_id, location, description = nil, nil, nil, "", ""
+      local title, ts, event_id, location, description, is_todo = nil, nil, nil, "", "", false
       local in_properties = false
       
       for _, l in ipairs(lines) do
         local t = l:gsub("^%s*(.-)%s*$", "%1")
-        if t:match("^%*+%s") and not title then
+        if t:match("^%*+%s+TODO%s") or t:match("^%*+%s+NEXT%s") then
+          is_todo = true
+          title = t:match("^%*+%s+TODO%s+(.*)") or t:match("^%*+%s+NEXT%s+(.*)")
+        elseif t:match("^%*+%s") and not title then
           title = t:match("^%*+%s+(.*)")
         elseif t:match("^SCHEDULED:") or t:match("^DEADLINE:") then
           ts = t:match("<([^>]+)>")
@@ -425,7 +439,8 @@ function M.export_org()
         end
       end
       
-      if title and ts then
+      -- Handle TODOs with scheduled time -> Calendar
+      if is_todo and title and ts then
         local start_time = parse_org_timestamp(ts)
         if not start_time then goto continue end
         
@@ -458,7 +473,9 @@ function M.export_org()
             exported = exported + 1
           else
             vim.notify("Failed to update event: " .. (err or "unknown error"), vim.log.levels.WARN)
-            dashboard.add_error("Failed to update: " .. title)
+            if cfg.show_sync_status then
+              dashboard.add_error("Failed to update: " .. title)
+            end
           end
         elseif not gcal_events[key] then
           local result, err = gcal_api.create_event(event_data, calendar_id)
@@ -468,7 +485,27 @@ function M.export_org()
             gcal_events[key] = true
           else
             vim.notify("Failed to create event: " .. (err or "unknown error"), vim.log.levels.WARN)
-            dashboard.add_error("Failed to create: " .. title)
+            if cfg.show_sync_status then
+              dashboard.add_error("Failed to create: " .. title)
+            end
+          end
+        end
+      -- Handle TODOs without scheduled time -> Tasks
+      elseif is_todo and title and not ts then
+        local task_data = {
+          title = title,
+        }
+        if description and description ~= "" then
+          task_data.notes = description
+        end
+        
+        local result, err = gcal_api.create_task(task_data)
+        if result then
+          tasks_added = tasks_added + 1
+        else
+          vim.notify("Failed to create task: " .. (err or "unknown error"), vim.log.levels.WARN)
+          if cfg.show_sync_status then
+            dashboard.add_error("Failed to create task: " .. title)
           end
         end
       end
@@ -476,19 +513,15 @@ function M.export_org()
     end
   end
 
-  dashboard.update_stats({
-    exported = exported,
-  })
-  dashboard.set_in_progress(false)
-
-  local msg = string.format("Added: %d, Updated: %d", added, updated)
-  vim.notify(msg, vim.log.levels.INFO)
-  
   if cfg.show_sync_status then
-    vim.defer_fn(function()
-      dashboard.show()
-    end, 500)
+    dashboard.update_stats({
+      exported = exported,
+    })
+    dashboard.set_in_progress(false)
   end
+
+  local msg = string.format("Added: %d, Updated: %d, Tasks: %d", added, updated, tasks_added)
+  vim.notify(msg, vim.log.levels.INFO)
 end
 
 function split_string(input_string, delimiter)
