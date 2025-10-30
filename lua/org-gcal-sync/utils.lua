@@ -809,16 +809,29 @@ function M.export_org()
             }
           else
             -- Default to 30 minutes duration
-            local start_timestamp = os.time({
-              year = tonumber(start_time:match("(%d%d%d%d)")),
-              month = tonumber(start_time:match("%d%d%d%d%-(%d%d)")),
-              day = tonumber(start_time:match("%d%d%d%d%-%d%d%-(%d%d)")),
-              hour = tonumber(start_time:match("T(%d%d)")),
-              min = tonumber(start_time:match("T%d%d:(%d%d)")),
-            })
-            local end_timestamp = start_timestamp + 1800  -- 30 minutes in seconds
+            -- start_time is already in UTC format: "2025-10-30T15:00:00Z"
+            -- Parse it directly and add 30 minutes
+            local year = tonumber(start_time:match("(%d%d%d%d)"))
+            local month = tonumber(start_time:match("%d%d%d%d%-(%d%d)"))
+            local day = tonumber(start_time:match("%d%d%d%d%-%d%d%-(%d%d)"))
+            local hour = tonumber(start_time:match("T(%d%d)"))
+            local min = tonumber(start_time:match("T%d%d:(%d%d)"))
+            
+            -- Calculate in minutes to avoid timezone issues
+            local total_minutes = min + 30
+            local add_hours = math.floor(total_minutes / 60)
+            local end_min = total_minutes % 60
+            local end_hour = hour + add_hours
+            
+            -- Handle hour overflow
+            if end_hour >= 24 then
+              end_hour = end_hour - 24
+              day = day + 1
+            end
+            
             event_data["end"] = {
-              dateTime = os.date("!%Y-%m-%dT%H:%M:%SZ", end_timestamp),
+              dateTime = string.format("%04d-%02d-%02dT%02d:%02d:00Z", 
+                year, month, day, end_hour, end_min),
               timeZone = "UTC",
             }
           end
