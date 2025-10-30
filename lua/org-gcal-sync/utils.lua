@@ -288,28 +288,44 @@ function M.import_gcal()
       local existing_event = existing[key]
       
       if not existing_event then
-        local file = expanded_import_dir .. "/" .. slugify(event.title)
-        local opts = {
-          title = event.title,
-          timestamp = event.timestamp,
-          location = event.location,
-          description = event.description,
-          event_id = event.id,
-          updated = event.updated,
-          calendar_id = calendar_id,
-          recurring_event_id = event.recurring_event_id,
-          recurrence = event.recurrence,
-        }
-        local success, result = pcall(M.write_roam_event_note, file, opts)
-        if success then
-          imported = imported + 1
-        else
-          vim.notify('Failed to write roam event: ' .. tostring(result), vim.log.levels.ERROR)
-          if cfg.show_sync_status then
-            dashboard.add_error('Failed to write event: ' .. event.title)
+        -- Check if an event with this GCAL_ID already exists anywhere in roam dirs
+        local event_exists_by_id = false
+        if event.id then
+          for _, roam_event in pairs(existing) do
+            if roam_event.event_id == event.id then
+              existing_event = roam_event
+              event_exists_by_id = true
+              break
+            end
           end
         end
-      elseif existing_event and event.updated ~= existing_event.gcal_updated then
+        
+        if not event_exists_by_id then
+          local file = expanded_import_dir .. "/" .. slugify(event.title)
+          local opts = {
+            title = event.title,
+            timestamp = event.timestamp,
+            location = event.location,
+            description = event.description,
+            event_id = event.id,
+            updated = event.updated,
+            calendar_id = calendar_id,
+            recurring_event_id = event.recurring_event_id,
+            recurrence = event.recurrence,
+          }
+          local success, result = pcall(M.write_roam_event_note, file, opts)
+          if success then
+            imported = imported + 1
+          else
+            vim.notify('Failed to write roam event: ' .. tostring(result), vim.log.levels.ERROR)
+            if cfg.show_sync_status then
+              dashboard.add_error('Failed to write event: ' .. event.title)
+            end
+          end
+        end
+      end
+      
+      if existing_event and event.updated ~= existing_event.gcal_updated then
         local choice, resolved_event = conflict.resolve_conflict(
           existing_event,
           event,
@@ -511,23 +527,79 @@ local function update_org_file_with_gcal_id(file_path, gcal_id, gcal_updated)
   vim.fn.writefile(new_lines, file_path)
 end
 
+local function find_and_remove_local_duplicates()
+  -- Find and remove duplicate org files (same GCAL_ID)
+  if #cfg.org_roam_dirs == 0 then return 0 end
+  
+  local import_dir = cfg.org_roam_dirs[1]
+  local expanded_dir = vim.fn.expand(import_dir)
+  local files = vim.fn.globpath(expanded_dir, "**/*.org", false, true)
+  
+  local seen_ids = {}
+  local duplicates = {}
+  
+  for _, f in ipairs(files) do
+    local lines = vim.fn.readfile(f)
+    local gcal_id = nil
+    local in_properties = false
+    
+    for _, l in ipairs(lines) do
+      local t = l:gsub("^%s*(.-)%s*$", "%1")
+      if t == ":PROPERTIES:" then
+        in_properties = true
+      elseif t == ":END:" then
+        in_properties = false
+      elseif in_properties and t:match("^:GCAL_ID:") then
+        gcal_id = t:match("^:GCAL_ID:%s*(.+)%s*$")
+      end
+    end
+    
+    if gcal_id then
+      if seen_ids[gcal_id] then
+        -- This is a duplicate - mark for deletion
+        table.insert(duplicates, f)
+      else
+        seen_ids[gcal_id] = f
+      end
+    end
+  end
+  
+  -- Delete duplicates
+  for _, dup_file in ipairs(duplicates) do
+    vim.fn.delete(dup_file)
+  end
+  
+  if #duplicates > 0 then
+    vim.notify(string.format("Removed %d duplicate org files", #duplicates), vim.log.levels.INFO)
+  end
+  
+  return #duplicates
+end
+
 function M.export_org()
   if cfg.show_sync_status then
     dashboard.set_in_progress(true)
   end
   
-  -- Clean up duplicates on Google Calendar first
+  -- Clean up local duplicate org files first
+  find_and_remove_local_duplicates()
+  
+  -- Clean up duplicates on Google Calendar
   local total_duplicates_cleaned = 0
   for _, calendar_id in ipairs(cfg.calendars or { "primary" }) do
     total_duplicates_cleaned = total_duplicates_cleaned + find_and_clean_gcal_duplicates(calendar_id)
   end
   
   local gcal_events = {}
+  local gcal_events_by_id = {}  -- Index by event_id for fast lookup
   
   for _, calendar_id in ipairs(cfg.calendars or { "primary" }) do
     local cal_events = M.get_gcal_events(calendar_id)
     for k, v in pairs(cal_events) do
       gcal_events[k] = v
+      if v.id then
+        gcal_events_by_id[v.id] = v
+      end
     end
   end
   
@@ -535,6 +607,7 @@ function M.export_org()
   local updated = 0
   local exported = 0
   local tasks_added = 0
+  local skipped_existing = 0
 
   for _, base in ipairs(cfg.org_roam_dirs) do
     local calendar_id = cfg.per_directory_calendars[base] or "primary"
@@ -604,6 +677,12 @@ function M.export_org()
         local start_time = parse_org_timestamp(ts)
         if not start_time then goto continue end
         
+        -- Skip if this TODO already has a GCAL_ID and exists on calendar
+        if event_id and gcal_events_by_id[event_id] then
+          skipped_existing = skipped_existing + 1
+          goto continue
+        end
+        
         local event_data = {
           summary = title,
           start = {
@@ -626,7 +705,8 @@ function M.export_org()
         
         local key = M.make_key(title, ts, event_id)
         
-        if event_id and gcal_events[event_id] then
+        if event_id and gcal_events_by_id[event_id] then
+          -- Update existing event
           local result, err = gcal_api.update_event(event_id, event_data, calendar_id)
           if result then
             updated = updated + 1
@@ -638,6 +718,7 @@ function M.export_org()
             end
           end
         elseif not gcal_events[key] then
+          -- Create new event only if it doesn't exist by key match
           local result, err = gcal_api.create_event(event_data, calendar_id)
           if result then
             added = added + 1
@@ -646,6 +727,7 @@ function M.export_org()
             -- Update the org file with the GCAL_ID
             if result.id then
               update_org_file_with_gcal_id(f, result.id, result.updated)
+              gcal_events_by_id[result.id] = true  -- Track it
             end
           else
             vim.notify("Failed to create event: " .. (err or "unknown error"), vim.log.levels.WARN)
@@ -653,6 +735,8 @@ function M.export_org()
               dashboard.add_error("Failed to create: " .. title)
             end
           end
+        else
+          skipped_existing = skipped_existing + 1
         end
       -- Handle TODOs without scheduled time -> Tasks
       elseif is_todo and title and not ts then
@@ -688,7 +772,8 @@ function M.export_org()
     dashboard.set_in_progress(false)
   end
 
-  local msg = string.format("Added: %d, Updated: %d, Tasks: %d", added, updated, tasks_added)
+  local msg = string.format("Added: %d, Updated: %d, Tasks: %d, Skipped: %d", 
+    added, updated, tasks_added, skipped_existing)
   vim.notify(msg, vim.log.levels.INFO)
 end
 
