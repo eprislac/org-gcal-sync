@@ -14,20 +14,41 @@ M.config = {
   show_sync_status = false,
 }
 
+local _setup_done = false
+
+-- Auto-setup with defaults if not already setup
+local function ensure_setup()
+  if not _setup_done then
+    M.setup()
+  end
+end
+
 -- Default commands (will be overridden in setup)
-M.sync = function() vim.notify("Sync not configured", vim.log.levels.WARN) end
-M.import_gcal = M.sync
-M.export_org = M.sync
+M.sync = function()
+  ensure_setup()
+  if M._sync then M._sync() end
+end
+M.import_gcal = function()
+  ensure_setup()
+  if M._import_gcal then M._import_gcal() end
+end
+M.export_org = function()
+  ensure_setup()
+  if M._export_org then M._export_org() end
+end
 
 function M.setup(opts)
+  if _setup_done then return end
+  _setup_done = true
+  
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   
   vim.fn.mkdir(M.config.agenda_dir, "p")
 
   -- Register commands
-  vim.api.nvim_create_user_command("SyncOrgGcal", M.sync, { desc = "Sync org ↔ gcal" })
-  vim.api.nvim_create_user_command("ImportGcal", M.import_gcal, { desc = "Import from gcal" })
-  vim.api.nvim_create_user_command("ExportOrg", M.export_org, { desc = "Export to gcal" })
+  vim.api.nvim_create_user_command("SyncOrgGcal", function() M.sync() end, { desc = "Sync org ↔ gcal" })
+  vim.api.nvim_create_user_command("ImportGcal", function() M.import_gcal() end, { desc = "Import from gcal" })
+  vim.api.nvim_create_user_command("ExportOrg", function() M.export_org() end, { desc = "Export to gcal" })
   vim.api.nvim_create_user_command("OrgGcalAuth", function()
     local gcal_api = require("org-gcal-sync.gcal_api")
     gcal_api.authenticate()
@@ -100,9 +121,9 @@ function M.setup(opts)
   local ok, utils = pcall(require, "org-gcal-sync.utils")
   if ok then
     utils.set_config(M.config)
-    M.sync = utils.sync
-    M.import_gcal = utils.import_gcal
-    M.export_org = utils.export_org
+    M._sync = utils.sync
+    M._import_gcal = utils.import_gcal
+    M._export_org = utils.export_org
   else
     vim.notify("org-gcal-sync: utils failed to load: " .. utils, vim.log.levels.ERROR)
   end
