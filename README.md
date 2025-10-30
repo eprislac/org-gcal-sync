@@ -3,12 +3,12 @@ A Neovim plugin to synchronize Google Calendar events with `org-roam` notes,
 featuring full bidirectional sync, agenda integration, and backlinks.
 
 ## Why?
+
 I've been using orgmode and org-roam a lot lately in Neovim, and I wanted to be
 able to sync my agenda files. Google Calendar is my primary calendar
 service, so I built this plugin to bridge the gap. It allows me to keep my
 org-roam notes and tasks in sync with my Google Calendar events, ensuring I
 never miss an important meeting or deadline.
-[[]]
 ---
 
 ## Features
