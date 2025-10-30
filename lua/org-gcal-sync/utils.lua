@@ -425,19 +425,26 @@ function M.export_org()
       
       for _, l in ipairs(lines) do
         local t = l:gsub("^%s*(.-)%s*$", "%1")
-        -- Check for TODO/NEXT items first
+        -- Check for TODO/NEXT items first (with optional priority like [#A])
         if t:match("^%*+%s+TODO") or t:match("^%*+%s+NEXT") then
           is_todo = true
-          -- Extract title after TODO/NEXT keyword
-          local extracted = t:match("^%*+%s+TODO%s+(.*)")
+          -- Extract title after TODO/NEXT keyword, handling optional priority [#A], [#B], [#C]
+          -- Patterns: * TODO Title, * TODO [#A] Title, * NEXT [#B] Title
+          local extracted = t:match("^%*+%s+TODO%s+%[#[ABC]%]%s+(.*)")  -- with priority
           if not extracted then
-            extracted = t:match("^%*+%s+TODO$") and "" or nil
+            extracted = t:match("^%*+%s+TODO%s+(.*)") -- without priority
           end
           if not extracted then
-            extracted = t:match("^%*+%s+NEXT%s+(.*)")
+            extracted = t:match("^%*+%s+TODO$") and "" or nil -- just TODO, no title
           end
           if not extracted then
-            extracted = t:match("^%*+%s+NEXT$") and "" or nil
+            extracted = t:match("^%*+%s+NEXT%s+%[#[ABC]%]%s+(.*)")  -- NEXT with priority
+          end
+          if not extracted then
+            extracted = t:match("^%*+%s+NEXT%s+(.*)") -- NEXT without priority
+          end
+          if not extracted then
+            extracted = t:match("^%*+%s+NEXT$") and "" or nil -- just NEXT, no title
           end
           if extracted then
             title = extracted
