@@ -150,11 +150,50 @@ The token will be automatically refreshed when needed.
 - Last modified time → `:GCAL_UPDATED:` property
 
 **From Org to Google Calendar:**
-- Headline title → Event summary
-- `SCHEDULED` or `DEADLINE` → Event time
+- TODO/NEXT items with `SCHEDULED` or `DEADLINE` timestamps
+- Scheduled TODOs → Google Calendar events (with times)
+- Unscheduled TODOs → Google Tasks
 - `:LOCATION:` property → Event location
 - Body text → Event description
 - Updates existing events if they have a `:GCAL_ID:` property
+
+### Timestamp Formats
+
+The plugin supports standard org-mode timestamp formats:
+
+**Timed events (with specific time):**
+```org
+* TODO Take Blood Pressure
+  SCHEDULED: <2025-10-30 Thu 10:00 .+1d>
+```
+→ Creates calendar event at **10:00 AM - 10:30 AM** (30-minute default duration)
+
+**Timed events with time range:**
+```org
+* TODO Team Meeting
+  SCHEDULED: <2025-10-30 Thu 14:00>--<2025-10-30 Thu 15:30>
+```
+→ Creates calendar event at **2:00 PM - 3:30 PM**
+
+**All-day events (date only):**
+```org
+* TODO Review Documents
+  SCHEDULED: <2025-10-30 Sat>
+```
+→ Creates **all-day** event on Oct 30
+
+**Recurring events:**
+```org
+* TODO Daily Standup
+  SCHEDULED: <2025-10-30 Thu 09:00 .+1d>
+```
+→ Repeats daily (`.+1d` = daily, `.+1w` = weekly, `.+1m` = monthly)
+
+**Priority tags are supported:**
+```org
+* TODO [#A] High Priority Task
+  SCHEDULED: <2025-10-30 Thu 10:00>
+```
 
 ### Event Tracking
 
@@ -180,8 +219,7 @@ Run `:checkhealth org-gcal-sync` to verify:
 
 ## File Format
 
-Generated org files look like:
-
+**Example: Imported calendar event**
 ```org
 :PROPERTIES:
 :ID: 8b2c3d3e-9800-4186-80e5-d07ce7bc5327
@@ -190,7 +228,7 @@ Generated org files look like:
 #+filetags: :gcal:
 
 * Team Standup
-  SCHEDULED: <2025-11-01 14:00>
+  SCHEDULED: <2025-11-01 Fri 14:00>--<2025-11-01 Fri 14:30>
   :PROPERTIES:
   :GCAL_ID: abc123xyz
   :LOCATION: Conference Room A
@@ -198,6 +236,38 @@ Generated org files look like:
   :END:
 
   Discussion points for the daily standup meeting.
+```
+
+**Example: TODO that syncs to calendar**
+```org
+:PROPERTIES:
+:ID: 2F80BBB3-F46C-42E5-9831-C25DDCD060C0
+:CATEGORY: Work
+:END:
+#+TITLE Daily Review
+#+FILETAGS: #work #routine
+
+* TODO [#A] Daily Review
+  SCHEDULED: <2025-10-30 Thu 17:00 .+1d>--<2025-10-30 Thu 17:30>
+  :PROPERTIES:
+  :GCAL_ID: xyz789abc
+  :LAST_REPEAT: [2025-10-29 Wed 17:25]
+  :END:
+  :LOGBOOK:
+    - State "DONE" from "TODO" [2025-10-29 Wed 17:25]
+  :END:
+
+  Review tasks and plan tomorrow.
+```
+
+**Example: Unscheduled TODO that syncs to Google Tasks**
+```org
+* TODO [#B] Research new library
+  :PROPERTIES:
+  :GCAL_ID: task_def456
+  :END:
+
+  Look into the new data processing library for the project.
 ```
 
 ---
@@ -226,7 +296,26 @@ Tests mock the Google Calendar API to avoid requiring actual credentials during 
 ### Events not syncing
 - Check `:checkhealth org-gcal-sync`
 - Verify your org files have `SCHEDULED` or `DEADLINE` timestamps
-- Make sure the timestamp format is correct: `<YYYY-MM-DD HH:MM>`
+- Make sure TODOs are marked with `TODO` or `NEXT` keywords
+- Ensure timestamps follow org-mode format:
+  - Timed: `<2025-10-30 Thu 10:00>` or `<2025-10-30 10:00>`
+  - All-day: `<2025-10-30>` or `<2025-10-30 Thu>`
+  - Range: `<2025-10-30 Thu 10:00>--<2025-10-30 Thu 11:00>`
+  
+### Events appearing as all-day when they shouldn't
+- Make sure your timestamp includes a time: `<2025-10-30 Thu 10:00>`
+- Date-only timestamps `<2025-10-30>` create all-day events by design
+- Time ranges use `--` separator: `<START>--<END>`
+
+### Duplicate events
+- The plugin automatically detects and removes duplicates
+- Check for events with the same `:GCAL_ID:` property
+- Run `:SyncOrgGcal` to clean up duplicates automatically
+
+### Tasks not appearing in Google Tasks
+- Unscheduled TODOs sync to Google Tasks
+- Make sure the TODO doesn't have a `SCHEDULED` or `DEADLINE` timestamp
+- Scheduled TODOs go to Google Calendar, not Tasks
 
 ### API rate limits
 - Google Calendar API has quotas (usually 1,000,000 queries/day)

@@ -401,23 +401,91 @@ end
 
 -- EXPORT ---------------------------------------------------------------------
 local function parse_org_timestamp(ts_str)
-  if not ts_str then return nil end
-  local year, month, day, hour, min = ts_str:match("(%d%d%d%d)%-(%d%d)%-(%d%d)%s+(%d%d):(%d%d)")
+  if not ts_str then return nil, nil end
+  
+  -- Handle time ranges: <2025-10-30 Thu 11:30 .+1d>--<2025-10-30 Thu 12:30>
+  local range_start, range_end = ts_str:match("^<([^>]+)>%-%-%s*<([^>]+)>")
+  
+  local start_str = range_start or ts_str
+  local end_str = range_end
+  
+  -- Parse start time
+  -- Format: 2025-10-30 Thu 10:00 .+1d
+  -- or:     2025-10-30 Thu .+1d
+  -- or:     2025-10-30
+  local year, month, day, hour, min
+  
+  -- Try: YYYY-MM-DD Day HH:MM (with optional day name and repeater)
+  year, month, day, hour, min = start_str:match("(%d%d%d%d)%-(%d%d)%-(%d%d)%s+%a+%s+(%d%d):(%d%d)")
+  
   if not year then
-    year, month, day = ts_str:match("(%d%d%d%d)%-(%d%d)%-(%d%d)")
-    hour, min = "00", "00"
+    -- Try: YYYY-MM-DD HH:MM (without day name)
+    year, month, day, hour, min = start_str:match("(%d%d%d%d)%-(%d%d)%-(%d%d)%s+(%d%d):(%d%d)")
   end
-  if not year then return nil end
   
-  local timestamp = os.time({
-    year = tonumber(year),
-    month = tonumber(month),
-    day = tonumber(day),
-    hour = tonumber(hour),
-    min = tonumber(min),
-  })
+  if not year then
+    -- Try: YYYY-MM-DD Day (date only with day name)
+    year, month, day = start_str:match("(%d%d%d%d)%-(%d%d)%-(%d%d)%s+%a+")
+    hour, min = nil, nil
+  end
   
-  return os.date("!%Y-%m-%dT%H:%M:%SZ", timestamp)
+  if not year then
+    -- Try: YYYY-MM-DD (date only)
+    year, month, day = start_str:match("(%d%d%d%d)%-(%d%d)%-(%d%d)")
+    hour, min = nil, nil
+  end
+  
+  if not year then return nil, nil end
+  
+  -- Create start timestamp
+  local start_time
+  if hour and min then
+    local timestamp = os.time({
+      year = tonumber(year),
+      month = tonumber(month),
+      day = tonumber(day),
+      hour = tonumber(hour),
+      min = tonumber(min),
+    })
+    start_time = os.date("!%Y-%m-%dT%H:%M:%SZ", timestamp)
+  else
+    -- Date only - create all-day event
+    local timestamp = os.time({
+      year = tonumber(year),
+      month = tonumber(month),
+      day = tonumber(day),
+      hour = 0,
+      min = 0,
+    })
+    start_time = os.date("!%Y-%m-%d", timestamp)
+  end
+  
+  -- Parse end time if exists
+  local end_time = nil
+  if end_str then
+    local end_year, end_month, end_day, end_hour, end_min
+    
+    -- Try: YYYY-MM-DD Day HH:MM
+    end_year, end_month, end_day, end_hour, end_min = end_str:match("(%d%d%d%d)%-(%d%d)%-(%d%d)%s+%a+%s+(%d%d):(%d%d)")
+    
+    if not end_year then
+      -- Try: YYYY-MM-DD HH:MM
+      end_year, end_month, end_day, end_hour, end_min = end_str:match("(%d%d%d%d)%-(%d%d)%-(%d%d)%s+(%d%d):(%d%d)")
+    end
+    
+    if end_year and end_hour and end_min then
+      local end_timestamp = os.time({
+        year = tonumber(end_year),
+        month = tonumber(end_month),
+        day = tonumber(end_day),
+        hour = tonumber(end_hour),
+        min = tonumber(end_min),
+      })
+      end_time = os.date("!%Y-%m-%dT%H:%M:%SZ", end_timestamp)
+    end
+  end
+  
+  return start_time, end_time
 end
 
 local function find_and_clean_gcal_duplicates(calendar_id)
@@ -674,7 +742,7 @@ function M.export_org()
       
       -- Handle TODOs with scheduled time -> Calendar
       if is_todo and title and ts then
-        local start_time = parse_org_timestamp(ts)
+        local start_time, end_time = parse_org_timestamp(ts)
         if not start_time then goto continue end
         
         -- Skip if this TODO already has a GCAL_ID and exists on calendar
@@ -683,17 +751,58 @@ function M.export_org()
           goto continue
         end
         
+        -- Build event data
         local event_data = {
           summary = title,
-          start = {
+        }
+        
+        -- Check if this is an all-day event (date format without time)
+        if start_time:match("^%d%d%d%d%-%d%d%-%d%d$") then
+          -- All-day event
+          event_data.start = {
+            date = start_time,
+          }
+          -- End date is next day for all-day events
+          local year, month, day = start_time:match("(%d%d%d%d)%-(%d%d)%-(%d%d)")
+          local next_day = os.time({
+            year = tonumber(year),
+            month = tonumber(month),
+            day = tonumber(day) + 1,
+            hour = 0,
+            min = 0,
+          })
+          event_data["end"] = {
+            date = os.date("!%Y-%m-%d", next_day),
+          }
+        else
+          -- Timed event
+          event_data.start = {
             dateTime = start_time,
             timeZone = "UTC",
-          },
-          ["end"] = {
-            dateTime = os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() + 3600),
-            timeZone = "UTC",
-          },
-        }
+          }
+          
+          if end_time then
+            -- Use provided end time
+            event_data["end"] = {
+              dateTime = end_time,
+              timeZone = "UTC",
+            }
+          else
+            -- Default to 30 minutes duration
+            local start_timestamp = os.time({
+              year = tonumber(start_time:match("(%d%d%d%d)")),
+              month = tonumber(start_time:match("%d%d%d%d%-(%d%d)")),
+              day = tonumber(start_time:match("%d%d%d%d%-%d%d%-(%d%d)")),
+              hour = tonumber(start_time:match("T(%d%d)")),
+              min = tonumber(start_time:match("T%d%d:(%d%d)")),
+            })
+            local end_timestamp = start_timestamp + 1800  -- 30 minutes in seconds
+            event_data["end"] = {
+              dateTime = os.date("!%Y-%m-%dT%H:%M:%SZ", end_timestamp),
+              timeZone = "UTC",
+            }
+          end
+        end
         
         if location and location ~= "" then
           event_data.location = location
