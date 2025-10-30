@@ -2,7 +2,7 @@
 local M = {}
 
 M.config = {
-  agenda_dir = vim.fn.stdpath("data") .. "/org-gcal/agenda",
+  agenda_dir = nil,  -- Deprecated: now uses first org_roam_dir
   org_roam_dirs = {},
   enable_backlinks = true,
   auto_sync_on_save = true,
@@ -43,7 +43,15 @@ function M.setup(opts)
   
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   
-  vim.fn.mkdir(M.config.agenda_dir, "p")
+  -- Set default agenda_dir if not specified and no roam_dirs
+  if not M.config.agenda_dir and #M.config.org_roam_dirs == 0 then
+    M.config.agenda_dir = vim.fn.stdpath("data") .. "/org-gcal/agenda"
+  end
+  
+  -- Create agenda_dir if it's still used
+  if M.config.agenda_dir then
+    vim.fn.mkdir(M.config.agenda_dir, "p")
+  end
 
   -- Register commands
   vim.api.nvim_create_user_command("SyncOrgGcal", function() M.sync() end, { desc = "Sync org ↔ gcal" })
@@ -92,10 +100,15 @@ function M.setup(opts)
     })
   end, { desc = "List available calendars" })
   
-  vim.g.org_agenda_files = vim.g.org_agenda_files or {}
-  local agenda_path = vim.fn.expand(M.config.agenda_dir) .. "/**/*.org"
-  if not vim.tbl_contains(vim.g.org_agenda_files, agenda_path) then
-    table.insert(vim.g.org_agenda_files, agenda_path)
+  -- Add roam dirs to org_agenda_files instead of agenda_dir
+  if #M.config.org_roam_dirs > 0 then
+    vim.g.org_agenda_files = vim.g.org_agenda_files or {}
+    for _, roam_dir in ipairs(M.config.org_roam_dirs) do
+      local agenda_path = vim.fn.expand(roam_dir) .. "/**/*.org"
+      if not vim.tbl_contains(vim.g.org_agenda_files, agenda_path) then
+        table.insert(vim.g.org_agenda_files, agenda_path)
+      end
+    end
   end
 
   -- Auto-sync on save if file contains SCHEDULED or DEADLINE

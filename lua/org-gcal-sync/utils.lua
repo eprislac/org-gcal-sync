@@ -81,21 +81,32 @@ end
 
 M.get_existing_roam_events = function()
   local map = {}
-  local files = vim.fn.glob(cfg.agenda_dir .. "/*.org", false, true)
+  
+  -- Use first roam dir for imports, or fallback to agenda_dir
+  local import_dir = cfg.org_roam_dirs[1] or cfg.agenda_dir
+  local expanded_dir = vim.fn.expand(import_dir)
+  local files = vim.fn.globpath(expanded_dir, "**/*.org", false, true)
+  
   for _, f in ipairs(files) do
     local lines = vim.fn.readfile(f)
     local title, ts, event_id, gcal_updated, calendar_id, file_modified = nil, nil, nil, nil, nil, nil
+    local in_properties = false
+    
     for _, l in ipairs(lines) do
       local t = l:gsub("^%s*(.-)%s*$", "%1")
       if t:match("^%*+%s") and not title then
         title = t:match("^%*+%s+(.*)")
-      elseif t:match("^SCHEDULED:") or t:match("^DEADLINE:") then
+      elseif t:match("SCHEDULED:") or t:match("DEADLINE:") then
         ts = t:match("<([^>]+)>")
-      elseif t:match("^:GCAL_ID:") then
+      elseif t == ":PROPERTIES:" then
+        in_properties = true
+      elseif t == ":END:" then
+        in_properties = false
+      elseif in_properties and t:match("^:GCAL_ID:") then
         event_id = t:match("^:GCAL_ID:%s*(.+)%s*$")
-      elseif t:match("^:GCAL_UPDATED:") then
+      elseif in_properties and t:match("^:GCAL_UPDATED:") then
         gcal_updated = t:match("^:GCAL_UPDATED:%s*(.+)%s*$")
-      elseif t:match("^:CALENDAR_ID:") then
+      elseif in_properties and t:match("^:CALENDAR_ID:") then
         calendar_id = t:match("^:CALENDAR_ID:%s*(.+)%s*$")
       end
     end
@@ -254,6 +265,10 @@ function M.import_gcal()
   local total_deleted = 0
   local total_conflicts = 0
   
+  -- Use first roam dir for imports
+  local import_dir = cfg.org_roam_dirs[1] or cfg.agenda_dir
+  local expanded_import_dir = vim.fn.expand(import_dir)
+  
   for _, calendar_id in ipairs(calendars) do
     local gcal_events = M.get_gcal_events(calendar_id)
     
@@ -273,7 +288,7 @@ function M.import_gcal()
       local existing_event = existing[key]
       
       if not existing_event then
-        local file = cfg.agenda_dir .. "/" .. slugify(event.title)
+        local file = expanded_import_dir .. "/" .. slugify(event.title)
         local opts = {
           title = event.title,
           timestamp = event.timestamp,
@@ -389,10 +404,124 @@ local function parse_org_timestamp(ts_str)
   return os.date("!%Y-%m-%dT%H:%M:%SZ", timestamp)
 end
 
+local function find_and_clean_gcal_duplicates(calendar_id)
+  -- Find duplicate events on Google Calendar side
+  local time_min = os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() - 7 * 24 * 60 * 60)
+  local time_max = os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() + 90 * 24 * 60 * 60)
+  
+  local events, err = gcal_api.list_events(time_min, time_max, calendar_id)
+  if not events then
+    return 0
+  end
+  
+  -- Track events by title+time to find duplicates
+  local event_map = {}
+  local duplicates = {}
+  
+  for _, event in ipairs(events) do
+    if event.summary and event.start then
+      local ts = parse_gcal_datetime(event.start)
+      if ts then
+        local key = M.make_key(event.summary, ts, nil) -- No event_id for duplicate detection
+        
+        if event_map[key] then
+          -- Found a duplicate - keep the older one (first one we saw)
+          table.insert(duplicates, event.id)
+        else
+          event_map[key] = event.id
+        end
+      end
+    end
+  end
+  
+  -- Delete duplicates
+  local deleted = 0
+  for _, dup_id in ipairs(duplicates) do
+    local success, err = gcal_api.delete_event(dup_id, calendar_id)
+    if success then
+      deleted = deleted + 1
+    else
+      vim.notify("Failed to delete duplicate event: " .. (err or "unknown"), vim.log.levels.WARN)
+    end
+  end
+  
+  if deleted > 0 then
+    vim.notify(string.format("Cleaned up %d duplicate events from Google Calendar", deleted), vim.log.levels.INFO)
+  end
+  
+  return deleted
+end
+
+local function update_org_file_with_gcal_id(file_path, gcal_id, gcal_updated)
+  local lines = vim.fn.readfile(file_path)
+  local new_lines = {}
+  local in_properties = false
+  local properties_exists = false
+  local has_gcal_id = false
+  local headline_line = nil
+  
+  for i, line in ipairs(lines) do
+    local t = line:gsub("^%s*(.-)%s*$", "%1")
+    
+    if t:match("^%*+%s+TODO") or t:match("^%*+%s+NEXT") or t:match("^%*+%s") then
+      headline_line = i
+    end
+    
+    if t == ":PROPERTIES:" then
+      in_properties = true
+      properties_exists = true
+    elseif t == ":END:" and in_properties then
+      in_properties = false
+      if not has_gcal_id then
+        -- Add GCAL_ID before :END:
+        table.insert(new_lines, "  :GCAL_ID: " .. gcal_id)
+        if gcal_updated then
+          table.insert(new_lines, "  :GCAL_UPDATED: " .. gcal_updated)
+        end
+      end
+    elseif in_properties and t:match("^:GCAL_ID:") then
+      has_gcal_id = true
+      -- Update existing GCAL_ID
+      line = "  :GCAL_ID: " .. gcal_id
+    elseif in_properties and t:match("^:GCAL_UPDATED:") and gcal_updated then
+      line = "  :GCAL_UPDATED: " .. gcal_updated
+    end
+    
+    table.insert(new_lines, line)
+  end
+  
+  -- If no properties drawer exists, add one after the headline
+  if not properties_exists and headline_line then
+    local result = {}
+    for i = 1, headline_line do
+      table.insert(result, new_lines[i])
+    end
+    table.insert(result, "  :PROPERTIES:")
+    table.insert(result, "  :GCAL_ID: " .. gcal_id)
+    if gcal_updated then
+      table.insert(result, "  :GCAL_UPDATED: " .. gcal_updated)
+    end
+    table.insert(result, "  :END:")
+    for i = headline_line + 1, #new_lines do
+      table.insert(result, new_lines[i])
+    end
+    new_lines = result
+  end
+  
+  vim.fn.writefile(new_lines, file_path)
+end
+
 function M.export_org()
   if cfg.show_sync_status then
     dashboard.set_in_progress(true)
   end
+  
+  -- Clean up duplicates on Google Calendar first
+  local total_duplicates_cleaned = 0
+  for _, calendar_id in ipairs(cfg.calendars or { "primary" }) do
+    total_duplicates_cleaned = total_duplicates_cleaned + find_and_clean_gcal_duplicates(calendar_id)
+  end
+  
   local gcal_events = {}
   
   for _, calendar_id in ipairs(cfg.calendars or { "primary" }) do
@@ -514,6 +643,10 @@ function M.export_org()
             added = added + 1
             exported = exported + 1
             gcal_events[key] = true
+            -- Update the org file with the GCAL_ID
+            if result.id then
+              update_org_file_with_gcal_id(f, result.id, result.updated)
+            end
           else
             vim.notify("Failed to create event: " .. (err or "unknown error"), vim.log.levels.WARN)
             if cfg.show_sync_status then
@@ -533,6 +666,10 @@ function M.export_org()
         local result, err = gcal_api.create_task(task_data)
         if result then
           tasks_added = tasks_added + 1
+          -- Update the org file with the TASK_ID
+          if result.id then
+            update_org_file_with_gcal_id(f, result.id, result.updated)
+          end
         else
           vim.notify("Failed to create task: " .. (err or "unknown error"), vim.log.levels.WARN)
           if cfg.show_sync_status then

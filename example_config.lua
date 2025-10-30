@@ -9,13 +9,11 @@ return {
     "jmbuhr/org-roam.nvim" 
   },
   opts = {
-    -- Directory where calendar events will be stored as org files
-    agenda_dir = "~/org/gcal",
-    
     -- Directories containing your org-roam notes
-    -- Events from these directories with SCHEDULED/DEADLINE will be exported to Google Calendar
+    -- First directory will be used for importing calendar events
+    -- All directories will be scanned for TODOs to export
     org_roam_dirs = { 
-      "~/org/personal", 
+      "~/Notes",  -- First dir used for calendar imports
       "~/org/work" 
     },
     
@@ -28,6 +26,9 @@ return {
     
     -- Show dashboard after sync (default: false)
     -- show_sync_status = true,
+    
+    -- Note: agenda_dir is deprecated and no longer used
+    -- Calendar events are now imported to the first org_roam_dir
   },
   
   -- Optional: Set up a periodic sync using a timer (every 5 minutes)
