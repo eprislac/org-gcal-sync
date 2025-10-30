@@ -23,10 +23,24 @@ local function show_diff(local_event, remote_event)
   
   if local_event.description ~= remote_event.description then
     table.insert(lines, "LOCAL Description:")
-    table.insert(lines, "  " .. (local_event.description or "(none)"))
+    if local_event.description and local_event.description ~= "" then
+      -- Split multi-line descriptions
+      for line in (local_event.description .. "\n"):gmatch("([^\n]*)\n") do
+        table.insert(lines, "  " .. line)
+      end
+    else
+      table.insert(lines, "  (none)")
+    end
     table.insert(lines, "")
     table.insert(lines, "REMOTE Description:")
-    table.insert(lines, "  " .. (remote_event.description or "(none)"))
+    if remote_event.description and remote_event.description ~= "" then
+      -- Split multi-line descriptions
+      for line in (remote_event.description .. "\n"):gmatch("([^\n]*)\n") do
+        table.insert(lines, "  " .. line)
+      end
+    else
+      table.insert(lines, "  (none)")
+    end
   end
   
   return lines
