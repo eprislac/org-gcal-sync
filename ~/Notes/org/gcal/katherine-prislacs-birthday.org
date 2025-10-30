@@ -1,0 +1,12 @@
+#+title: Katherine Prislac's Birthday
+#+filetags: :gcal:
+
+* Katherine Prislac's Birthday
+  SCHEDULED: <2025-12-27 00:00>
+  :PROPERTIES:
+  :GCAL_ID: _60q30c1g60o30e1i60o4ac1g60rj8gpl88rj2c1h84s34h9g60s30c1g60o30c1g68o32c9n84sjic216d2k6ghg64o30c1g60o30c1g60o30c1g60o32c1g60o30c1g8l23ghhm6spjedpk8gpkac9k89132e248gs42e1l60pjac9h6l0g_20251227
+  :CALENDAR_ID: primary
+  :GCAL_UPDATED: 2023-01-11T18:30:04.881Z
+  :RECURRING_EVENT_ID: _60q30c1g60o30e1i60o4ac1g60rj8gpl88rj2c1h84s34h9g60s30c1g60o30c1g68o32c9n84sjic216d2k6ghg64o30c1g60o30c1g60o30c1g60o32c1g60o30c1g8l23ghhm6spjedpk8gpkac9k89132e248gs42e1l60pjac9h6l0g
+  :END:
+

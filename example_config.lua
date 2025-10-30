@@ -11,13 +11,13 @@ return {
   config = function()
     require("org-gcal-sync").setup({
       -- Directory where calendar events will be stored as org files
-      agenda_dir = "~/Syncthing/org/gcal",
+      agenda_dir = "~/org/gcal",
       
       -- Directories containing your org-roam notes
       -- Events from these directories with SCHEDULED/DEADLINE will be exported to Google Calendar
       org_roam_dirs = { 
-        "~/Syncthing/org/personal", 
-        "~/Syncthing/org/work" 
+        "~/org/personal", 
+        "~/org/work" 
       },
       
       -- Enable automatic backlinks to notes that mention calendar events

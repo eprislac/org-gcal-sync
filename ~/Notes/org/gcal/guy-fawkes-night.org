@@ -1,0 +1,16 @@
+#+title: Guy Fawkes Night
+#+filetags: :gcal:
+
+* Guy Fawkes Night
+  SCHEDULED: <2025-11-05 00:00>
+  :PROPERTIES:
+  :GCAL_ID: _b194ija38562qd9n64o3idhl6coiqc9n6kr3idhh6op3cb9p6os32dpi70_20251105
+  :CALENDAR_ID: primary
+  :LOCATION: UK
+  :GCAL_UPDATED: 2023-01-11T18:31:57.874Z
+  :RECURRING_EVENT_ID: _b194ija38562qd9n64o3idhl6coiqc9n6kr3idhh6op3cb9p6os32dpi70
+  :END:
+
+  "Remember, Remember, the fifth of November, The Gunpowder Treason and Plot, I can think of no reason the Gunpowder Treason should ever be forgot."
+  Today in 1605, Provincial Catholic Guy Fawkes was arrested and jailed for conspiring to blow up (Protestant)  King James and Parliament. Ever since, folks in the UK use this night to burn Fawkes in effigy and shoot off fireworks. Also known as Bonfire Night.
+

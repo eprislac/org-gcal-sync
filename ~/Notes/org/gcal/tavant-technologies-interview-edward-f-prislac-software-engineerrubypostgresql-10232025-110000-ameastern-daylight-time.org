@@ -1,0 +1,12 @@
+#+title: TAVANT TECHNOLOGIES  Interview - Edward F. Prislac | Software Engineer(Ruby/PostgreSQL) | 10/23/2025 11:00:00 AM(Eastern Daylight Time)
+#+filetags: :gcal:
+
+* TAVANT TECHNOLOGIES  Interview - Edward F. Prislac | Software Engineer(Ruby/PostgreSQL) | 10/23/2025 11:00:00 AM(Eastern Daylight Time)
+  SCHEDULED: <2025-10-23 10:00>
+  :PROPERTIES:
+  :GCAL_ID: _71gjaeb660sj4bb5cgp64b9k6lgjgbb170s38b9p68s32p3364p6ccj66g
+  :CALENDAR_ID: primary
+  :LOCATION: https://portal.risebird.io/Candidate/InterviewDetails?id=F0849D7E-DB3D-4B95-A9B5-8439303D1F89&IRFId=21694
+  :GCAL_UPDATED: 2025-10-22T14:15:38.486Z
+  :END:
+

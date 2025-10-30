@@ -121,6 +121,14 @@ M.get_existing_roam_events = function()
   return map
 end
 
+local function generate_uuid()
+  local template = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
+  return string.gsub(template, '[xy]', function(c)
+    local v = (c == 'x') and math.random(0, 0xf) or math.random(8, 0xb)
+    return string.format('%x', v)
+  end)
+end
+
 local function slugify(title)
   if cfg.slug_func then return cfg.slug_func(title) end
   return title
@@ -186,6 +194,9 @@ end
 
 M.write_roam_event_note = function(path, data)
   local lines = {
+    ":PROPERTIES:",
+    ":ID: " .. generate_uuid(),
+    ":END:",
     "#+title: " .. data.title,
     "#+filetags: :gcal:",
     "",

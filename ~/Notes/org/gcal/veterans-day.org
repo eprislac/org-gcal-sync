@@ -1,0 +1,13 @@
+#+title: Veteran's Day
+#+filetags: :gcal:
+
+* Veteran's Day
+  SCHEDULED: <2025-11-11 00:00>
+  :PROPERTIES:
+  :GCAL_ID: _b194ija38562qd9n64o3idhl6coiqc9n6crj8d9o6sp3ib9m64sj2e1n_20251111
+  :CALENDAR_ID: primary
+  :LOCATION: USA
+  :GCAL_UPDATED: 2023-01-11T18:32:14.313Z
+  :RECURRING_EVENT_ID: _b194ija38562qd9n64o3idhl6coiqc9n6crj8d9o6sp3ib9m64sj2e1n
+  :END:
+

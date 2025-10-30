@@ -1,7 +1,14 @@
 # org-gcal-sync
+A Neovim plugin to synchronize Google Calendar events with `org-roam` notes,
+featuring full bidirectional sync, agenda integration, and backlinks.
 
-**Full bidirectional sync**: `org-roam` ↔ Google Calendar with **agenda integration**, **backlinks**, and **unit tests**.
-
+## Why?
+I've been using orgmode and org-roam a lot lately in Neovim, and I wanted to be
+able to sync my agenda files. Google Calendar is my primary calendar
+service, so I built this plugin to bridge the gap. It allows me to keep my
+org-roam notes and tasks in sync with my Google Calendar events, ensuring I
+never miss an important meeting or deadline.
+[[]]
 ---
 
 ## Features
@@ -11,7 +18,6 @@
 - **Appears in `org-agenda`**
 - **Backlinks** to any note mentioning the event
 - **Duplicate-safe** with event ID tracking
-- **Syncthing-ready**
 - **Unit tested**
 - **Advanced sync**: Updates and deletions are synchronized bidirectionally
 - **Direct Google Calendar API integration** (no external dependencies)
@@ -84,8 +90,8 @@ Reload your shell or restart Neovim to apply the changes.
   },
   config = function()
     require("org-gcal-sync").setup({
-      agenda_dir = "~/Syncthing/org/gcal",
-      org_roam_dirs = { "~/Syncthing/org/personal", "~/Syncthing/org/work" },
+      agenda_dir = "~/org/gcal",
+      org_roam_dirs = { "~/org/personal", "~/org/work" },
       enable_backlinks = true,
       auto_sync_on_save = true,
       
@@ -177,6 +183,9 @@ Run `:checkhealth org-gcal-sync` to verify:
 Generated org files look like:
 
 ```org
+:PROPERTIES:
+:ID: 8b2c3d3e-9800-4186-80e5-d07ce7bc5327
+:END:
 #+title: Team Standup
 #+filetags: :gcal:
 

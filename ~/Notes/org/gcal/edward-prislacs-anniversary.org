@@ -1,0 +1,12 @@
+#+title: Edward Prislac's Anniversary
+#+filetags: :gcal:
+
+* Edward Prislac's Anniversary
+  SCHEDULED: <2025-11-17 00:00>
+  :PROPERTIES:
+  :GCAL_ID: _b194ija38562qd9n64o3idhl6coiqc9n6kr3idhi60p3ib9m6gq34c9p6s_20251117
+  :CALENDAR_ID: primary
+  :GCAL_UPDATED: 2023-01-11T18:33:05.794Z
+  :RECURRING_EVENT_ID: _b194ija38562qd9n64o3idhl6coiqc9n6kr3idhi60p3ib9m6gq34c9p6s
+  :END:
+

@@ -1,0 +1,15 @@
+#+title: U.S. Marine Corps Birthday
+#+filetags: :gcal:
+
+* U.S. Marine Corps Birthday
+  SCHEDULED: <2025-11-10 00:00>
+  :PROPERTIES:
+  :GCAL_ID: _b194ija38562qd9n64o3idhl6coiqc9n6kr3idhh6ks34b9n68p34cpo70_20251110
+  :CALENDAR_ID: primary
+  :LOCATION: Everywhere
+  :GCAL_UPDATED: 2023-01-11T18:30:16.461Z
+  :RECURRING_EVENT_ID: _b194ija38562qd9n64o3idhl6coiqc9n6kr3idhh6ks34b9n68p34cpo70
+  :END:
+
+  Happy Birthday to my beloved Marine Corps!!!
+
