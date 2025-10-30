@@ -397,6 +397,9 @@ function M.import_gcal()
   local msg = string.format("Imported: %d, Updated: %d, Deleted: %d, Conflicts: %d", 
     total_imported, total_updated, total_deleted, total_conflicts)
   vim.notify(msg, vim.log.levels.INFO)
+  
+  -- Show completion
+  vim.notify("✓ Import completed", vim.log.levels.INFO)
 end
 
 -- EXPORT ---------------------------------------------------------------------
@@ -684,12 +687,35 @@ function M.export_org()
     local expanded_base = vim.fn.expand(base)
     local files = vim.fn.globpath(expanded_base, "**/*.org", false, true)
     
-    if #files > 0 then
-      vim.notify(string.format("Scanning %d org files in %s", #files, expanded_base), vim.log.levels.INFO)
+    local total_files = #files
+    if total_files > 0 then
+      vim.notify(string.format("Scanning %d org files in %s", total_files, expanded_base), vim.log.levels.INFO)
     end
     
+    local processed = 0
     for _, f in ipairs(files) do
+      processed = processed + 1
+      
+      -- Show progress every 20 files
+      if processed % 20 == 0 then
+        vim.notify(string.format("Processing %d/%d files...", processed, total_files), vim.log.levels.INFO)
+      end
+      
       local lines = vim.fn.readfile(f)
+      
+      -- Quick pre-scan: skip files without TODO/NEXT keywords
+      local has_todo = false
+      for _, l in ipairs(lines) do
+        if l:match("^%*+%s+TODO") or l:match("^%*+%s+NEXT") then
+          has_todo = true
+          break
+        end
+      end
+      
+      if not has_todo then
+        goto continue
+      end
+      
       local title, ts, event_id, location, description, is_todo = nil, nil, nil, "", "", false
       local in_properties = false
       
@@ -878,6 +904,9 @@ function M.export_org()
   local msg = string.format("Added: %d, Updated: %d, Tasks: %d, Skipped: %d", 
     added, updated, tasks_added, skipped_existing)
   vim.notify(msg, vim.log.levels.INFO)
+  
+  -- Show completion
+  vim.notify("✓ Export completed", vim.log.levels.INFO)
 end
 
 function split_string(input_string, delimiter)
@@ -897,8 +926,15 @@ function split_string(input_string, delimiter)
 end
 
 function M.sync()
-  M.export_org()
-  M.import_gcal()
+  -- Run sync asynchronously so it doesn't block the UI
+  vim.notify("🔄 Starting sync (export → import)...", vim.log.levels.INFO)
+  vim.schedule(function()
+    M.export_org()
+    vim.schedule(function()
+      M.import_gcal()
+      vim.notify("✅ Sync complete!", vim.log.levels.INFO)
+    end)
+  end)
 end
 
 function M.delete_event(event_id)

@@ -119,9 +119,11 @@ function M.setup(opts)
         local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
         for _, line in ipairs(lines) do
           if line:match("SCHEDULED:") or line:match("DEADLINE:") then
-            vim.schedule(function()
+            -- Schedule async so save completes immediately
+            vim.defer_fn(function()
+              vim.notify("🔄 Starting background sync...", vim.log.levels.INFO)
               M.sync()
-            end)
+            end, 100)  -- Small delay to ensure file is written
             break
           end
         end
