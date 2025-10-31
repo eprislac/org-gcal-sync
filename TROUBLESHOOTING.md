@@ -82,9 +82,9 @@ This will generate a new token.
        SCHEDULED: <2025-11-01 10:00>
      ```
 
-3. **Outside org_roam_dirs**
+3. **Outside org_dirs**
    - Check file is in one of the configured directories
-   - Verify `org_roam_dirs` in setup
+   - Verify `org_dirs` in setup
 
 4. **API error**
    - Check `:messages` for detailed error
@@ -146,7 +146,7 @@ use "nvim-lua/plenary.nvim"
 
 **Solutions:**
 1. Reduce date range (modify `time_min`/`time_max` in `gcal_api.lua`)
-2. Limit `org_roam_dirs` to essential directories
+2. Limit `org_dirs` to essential directories
 3. Run sync less frequently
 4. Consider splitting calendars
 

@@ -6,18 +6,19 @@ return {
   dependencies = { 
     "nvim-lua/plenary.nvim",
     "nvim-orgmode/orgmode", 
-    "jmbuhr/org-roam.nvim" 
+    "jmbuhr/org-roam.nvim"  -- optional, for backlinks
   },
   opts = {
-    -- Directories containing your org-roam notes
+    -- Directories containing your org notes
     -- First directory will be used for importing calendar events
     -- All directories will be scanned for TODOs to export
-    org_roam_dirs = { 
+    org_dirs = { 
       "~/Notes",  -- First dir used for calendar imports
       "~/org/work" 
     },
     
     -- Enable automatic backlinks to notes that mention calendar events
+    -- Requires org-roam.nvim to be installed
     enable_backlinks = true,
     
     -- Auto-sync when saving org files that contain SCHEDULED or DEADLINE
@@ -40,8 +41,8 @@ return {
     -- Show dashboard after sync (default: false)
     -- show_sync_status = true,
     
-    -- Note: agenda_dir is deprecated and no longer used
-    -- Calendar events are now imported to the first org_roam_dir
+    -- Note: agenda_dir and org_roam_dirs are deprecated
+    -- Use org_dirs instead
   },
   
   -- Optional: Set up a periodic sync using a timer (every 5 minutes)

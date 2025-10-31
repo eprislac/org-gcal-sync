@@ -202,13 +202,13 @@ Press 'q' to close, 'r' to refresh, 's' to sync now
 
 ### Overview
 
-Map different org-roam directories to different Google Calendars.
+Map different org directories to different Google Calendars.
 
 ### Configuration
 
 ```lua
 require("org-gcal-sync").setup({
-  org_roam_dirs = {
+  org_dirs = {
     "~/org/work",
     "~/org/personal",
     "~/org/family",

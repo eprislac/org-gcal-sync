@@ -15,6 +15,6 @@ end
 -- Initialize plugin
 require("org-gcal-sync").setup({
   agenda_dir = vim.fn.tempname() .. "/agenda",
-  org_roam_dirs = {},
+  org_dirs = {},
   enable_backlinks = true,
 })

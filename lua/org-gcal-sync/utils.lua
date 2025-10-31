@@ -82,8 +82,8 @@ end
 M.get_existing_roam_events = function()
   local map = {}
   
-  -- Use first roam dir for imports, or fallback to agenda_dir
-  local import_dir = cfg.org_roam_dirs[1] or cfg.agenda_dir
+  -- Use first org dir for imports, or fallback to agenda_dir
+  local import_dir = cfg.org_dirs[1] or cfg.agenda_dir
   local expanded_dir = vim.fn.expand(import_dir)
   local files = vim.fn.globpath(expanded_dir, "**/*.org", false, true)
   
@@ -155,7 +155,7 @@ local function slugify(title)
 end
 
 local function find_mentioning_notes(title)
-  local dirs = cfg.org_roam_dirs
+  local dirs = cfg.org_dirs
   if #dirs == 0 then return {} end
   local pattern = vim.fn.shellescape(title)
   local cmd = string.format('grep -iFl %s %s 2>/dev/null || true', pattern, table.concat(vim.tbl_map(vim.fn.expand, dirs), " "))
@@ -250,10 +250,14 @@ M.write_roam_event_note = function(path, data)
   table.insert(lines, "")
   vim.fn.writefile(lines, path)
 
+  -- Only add backlinks if org-roam is available and enabled
   if cfg.enable_backlinks then
-    local mentions = find_mentioning_notes(data.title)
-    for _, note in ipairs(mentions) do
-      if note ~= path then add_backlink(note, path) end
+    local has_org_roam = pcall(require, "org-roam")
+    if has_org_roam then
+      local mentions = find_mentioning_notes(data.title)
+      for _, note in ipairs(mentions) do
+        if note ~= path then add_backlink(note, path) end
+      end
     end
   end
 end
@@ -410,8 +414,8 @@ function M.import_gcal()
   local total_deleted = 0
   local total_conflicts = 0
   
-  -- Use first roam dir for imports
-  local import_dir = cfg.org_roam_dirs[1] or cfg.agenda_dir
+  -- Use first org dir for imports
+  local import_dir = cfg.org_dirs[1] or cfg.agenda_dir
   local expanded_import_dir = vim.fn.expand(import_dir)
   
   for _, calendar_id in ipairs(calendars) do
@@ -433,12 +437,12 @@ function M.import_gcal()
       local existing_event = existing[key]
       
       if not existing_event then
-        -- Check if an event with this GCAL_ID already exists anywhere in roam dirs
+        -- Check if an event with this GCAL_ID already exists anywhere in org dirs
         local event_exists_by_id = false
         if event.id then
-          for _, roam_event in pairs(existing) do
-            if roam_event.event_id == event.id then
-              existing_event = roam_event
+          for _, org_event in pairs(existing) do
+            if org_event.event_id == event.id then
+              existing_event = org_event
               event_exists_by_id = true
               break
             end
@@ -747,9 +751,9 @@ end
 
 local function find_and_remove_local_duplicates()
   -- Find and remove duplicate org files (same GCAL_ID)
-  if #cfg.org_roam_dirs == 0 then return 0 end
+  if #cfg.org_dirs == 0 then return 0 end
   
-  local import_dir = cfg.org_roam_dirs[1]
+  local import_dir = cfg.org_dirs[1]
   local expanded_dir = vim.fn.expand(import_dir)
   local files = vim.fn.globpath(expanded_dir, "**/*.org", false, true)
   
@@ -827,7 +831,7 @@ function M.export_org()
   local tasks_added = 0
   local skipped_existing = 0
 
-  for _, base in ipairs(cfg.org_roam_dirs) do
+  for _, base in ipairs(cfg.org_dirs) do
     local calendar_id = cfg.per_directory_calendars[base] or "primary"
     
     -- Expand path and use globpath for better recursive search

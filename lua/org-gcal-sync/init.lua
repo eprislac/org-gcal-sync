@@ -2,8 +2,9 @@
 local M = {}
 
 M.config = {
-  agenda_dir = nil,  -- Deprecated: now uses first org_roam_dir
-  org_roam_dirs = {},
+  agenda_dir = nil,  -- Deprecated: now uses first org_dir
+  org_dirs = {},
+  org_roam_dirs = nil,  -- Deprecated: use org_dirs instead
   enable_backlinks = true,
   auto_sync_on_save = true,
   calendars = { "primary" },
@@ -53,8 +54,14 @@ function M.setup(opts)
   
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   
-  -- Set default agenda_dir if not specified and no roam_dirs
-  if not M.config.agenda_dir and #M.config.org_roam_dirs == 0 then
+  -- Support deprecated org_roam_dirs config
+  if M.config.org_roam_dirs and #M.config.org_roam_dirs > 0 then
+    vim.notify("org-gcal-sync: 'org_roam_dirs' is deprecated, use 'org_dirs' instead", vim.log.levels.WARN)
+    M.config.org_dirs = M.config.org_roam_dirs
+  end
+  
+  -- Set default agenda_dir if not specified and no org_dirs
+  if not M.config.agenda_dir and #M.config.org_dirs == 0 then
     M.config.agenda_dir = vim.fn.stdpath("data") .. "/org-gcal/agenda"
   end
   
@@ -124,11 +131,11 @@ function M.setup(opts)
     end
   end, { nargs = "?", desc = "Restart background sync (optionally with new interval in minutes)" })
   
-  -- Add roam dirs to org_agenda_files instead of agenda_dir
-  if #M.config.org_roam_dirs > 0 then
+  -- Add org dirs to org_agenda_files instead of agenda_dir
+  if #M.config.org_dirs > 0 then
     vim.g.org_agenda_files = vim.g.org_agenda_files or {}
-    for _, roam_dir in ipairs(M.config.org_roam_dirs) do
-      local agenda_path = vim.fn.expand(roam_dir) .. "/**/*.org"
+    for _, org_dir in ipairs(M.config.org_dirs) do
+      local agenda_path = vim.fn.expand(org_dir) .. "/**/*.org"
       if not vim.tbl_contains(vim.g.org_agenda_files, agenda_path) then
         table.insert(vim.g.org_agenda_files, agenda_path)
       end

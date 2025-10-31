@@ -77,7 +77,7 @@ require("org-gcal-sync").setup({
 
 ```lua
 require("org-gcal-sync").setup({
-  org_roam_dirs = {
+  org_dirs = {
     "~/org/work",
     "~/org/personal",
   },

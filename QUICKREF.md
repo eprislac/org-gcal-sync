@@ -49,13 +49,10 @@ export GCAL_ORG_SYNC_CLIENT_SECRET="your-client-secret"
 
 ```lua
 require("org-gcal-sync").setup({
-  -- Where to store calendar event org files
-  agenda_dir = "~/org/gcal",
+  -- Your org directories to scan for scheduled tasks and store calendar events
+  org_dirs = { "~/org/personal", "~/org/work" },
   
-  -- Your org-roam directories to scan for scheduled tasks
-  org_roam_dirs = { "~/org/personal", "~/org/work" },
-  
-  -- Enable/disable automatic backlinks
+  -- Enable/disable automatic backlinks (requires org-roam.nvim)
   enable_backlinks = true,
   
   -- Auto-sync when saving org files with SCHEDULED/DEADLINE

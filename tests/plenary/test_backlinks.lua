@@ -15,7 +15,7 @@ describe("org-gcal-sync backlinks", function()
     vim.fn.mkdir(roam_dir, "p")
 
     cfg.agenda_dir = agenda_dir
-    cfg.org_roam_dirs = { roam_dir }
+    cfg.org_dirs = { roam_dir }
     cfg.enable_backlinks = true
 
     -- Create a note that mentions the event

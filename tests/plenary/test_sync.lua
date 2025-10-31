@@ -12,7 +12,7 @@ describe("org-gcal-sync core sync", function()
     vim.fn.mkdir(agenda_dir, "p")
     vim.fn.mkdir(roam_dir, "p")
     cfg.agenda_dir = agenda_dir
-    cfg.org_roam_dirs = { roam_dir }
+    cfg.org_dirs = { roam_dir }
     
     -- Mock gcal_api
     gcal_api = require("org-gcal-sync.gcal_api")

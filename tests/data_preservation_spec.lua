@@ -9,7 +9,7 @@ describe("Data Preservation Tests", function()
     
     -- Setup minimal config
     utils.set_config({
-      org_roam_dirs = {vim.fn.tempname()},
+      org_dirs = {vim.fn.tempname()},
       calendars = {"primary"},
       enable_backlinks = false,
     })

@@ -1,23 +1,22 @@
 # org-gcal-sync
-A Neovim plugin to synchronize Google Calendar events with `org-roam` notes,
-featuring full bidirectional sync, agenda integration, and backlinks.
+A Neovim plugin to synchronize Google Calendar events with org-mode notes,
+featuring full bidirectional sync, agenda integration, and optional org-roam backlinks.
 
 ## Why?
 
-I've been using orgmode and org-roam a lot lately in Neovim, and I wanted to be
-able to sync my agenda files. Google Calendar is my primary calendar
-service, so I built this plugin to bridge the gap. It allows me to keep my
-org-roam notes and tasks in sync with my Google Calendar events, ensuring I
-never miss an important meeting or deadline.
+I've been using orgmode in Neovim, and I wanted to be able to sync my agenda 
+files. Google Calendar is my primary calendar service, so I built this plugin 
+to bridge the gap. It allows me to keep my org notes and tasks in sync with my 
+Google Calendar events, ensuring I never miss an important meeting or deadline.
 
 ---
 
 ## Features
 
-- GCal → org-roam notes with `#+title`, `SCHEDULED`, `ROAM_REFS`
-- org-roam tasks → GCal
+- GCal → org notes with `#+title`, `SCHEDULED`, and optional `ROAM_REFS`
+- org tasks → GCal
 - **Appears in `org-agenda`**
-- **Backlinks** to any note mentioning the event
+- **Backlinks** to any note mentioning the event (requires org-roam)
 - **Duplicate-safe** with event ID tracking
 - **Unit tested**
 - **Advanced sync**: Updates and deletions are synchronized bidirectionally
@@ -29,6 +28,7 @@ never miss an important meeting or deadline.
 - **Sync dashboard**: Visual status dashboard with statistics
 - **Per-directory calendars**: Map different org directories to different calendars
 - **Webhook support**: Real-time sync via Google Calendar push notifications
+- **Optional org-roam integration**: Works with or without org-roam
 
 ---
 
@@ -37,7 +37,7 @@ never miss an important meeting or deadline.
 - Neovim 0.9+
 - [plenary.nvim](https://github.com/nvim-lua/plenary.nvim)
 - [nvim-orgmode/orgmode](https://github.com/nvim-orgmode/orgmode)
-- [org-roam.nvim](https://github.com/jmbuhr/org-roam.nvim)
+- [org-roam.nvim](https://github.com/jmbuhr/org-roam.nvim) (optional, for backlinks)
 - Google Calendar API credentials (see setup below)
 
 ---
@@ -81,19 +81,20 @@ Reload your shell or restart Neovim to apply the changes.
 
 ## Install (lazy.nvim)
 
+### With org-roam (recommended for backlinks)
+
 ```lua
 {
   "eprislac/org-gcal-sync",
   dependencies = { 
     "nvim-lua/plenary.nvim",
     "nvim-orgmode/orgmode", 
-    "jmbuhr/org-roam.nvim" 
+    "jmbuhr/org-roam.nvim"  -- optional
   },
   config = function()
     require("org-gcal-sync").setup({
-      agenda_dir = "~/org/gcal",
-      org_roam_dirs = { "~/org/personal", "~/org/work" },
-      enable_backlinks = true,
+      org_dirs = { "~/org/personal", "~/org/work" },
+      enable_backlinks = true,  -- requires org-roam
       auto_sync_on_save = true,
       
       -- Advanced features (optional)
@@ -103,6 +104,25 @@ Reload your shell or restart Neovim to apply the changes.
       show_sync_status = true,
       -- per_directory_calendars = { ["~/org/work"] = "work@company.com" },
       -- webhook_port = 8080,
+    })
+  end,
+}
+```
+
+### Without org-roam (basic sync only)
+
+```lua
+{
+  "eprislac/org-gcal-sync",
+  dependencies = { 
+    "nvim-lua/plenary.nvim",
+    "nvim-orgmode/orgmode"
+  },
+  config = function()
+    require("org-gcal-sync").setup({
+      org_dirs = { "~/org" },
+      enable_backlinks = false,  -- org-roam not available
+      auto_sync_on_save = true,
     })
   end,
 }
