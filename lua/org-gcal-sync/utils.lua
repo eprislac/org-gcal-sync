@@ -206,6 +206,12 @@ local function add_backlink(note_path, event_file)
 end
 
 M.write_roam_event_note = function(path, data)
+  -- Check if file already exists - if so, update it instead of overwriting
+  if vim.fn.filereadable(path) == 1 then
+    return M.update_roam_event_note(path, data)
+  end
+  
+  -- Create new file
   local lines = {
     ":PROPERTIES:",
     ":ID: " .. generate_uuid(),
@@ -250,6 +256,145 @@ M.write_roam_event_note = function(path, data)
       if note ~= path then add_backlink(note, path) end
     end
   end
+end
+
+-- Smart update: Only update what changed in Google Calendar, preserve org-mode features
+M.update_roam_event_note = function(path, data)
+  local lines = vim.fn.readfile(path)
+  local new_lines = {}
+  local in_properties = false
+  local in_logbook = false
+  local in_file_props = false
+  local found_headline = false
+  
+  for i, line in ipairs(lines) do
+    local t = line:gsub("^%s*(.-)%s*$", "%1")
+    local updated_line = line
+    
+    -- Track file-level properties drawer (at start of file)
+    if i <= 5 and t == ":PROPERTIES:" then
+      in_file_props = true
+    elseif in_file_props and t == ":END:" then
+      in_file_props = false
+    elseif in_file_props then
+      -- NEVER update file-level properties (ID, CATEGORY, etc.)
+      -- These are org-specific
+      table.insert(new_lines, line)
+      goto continue
+    end
+    
+    -- NEVER update frontmatter - it's org-specific
+    if t:match("^#%+") then
+      table.insert(new_lines, line)
+      goto continue
+    end
+    
+    -- Update headline: preserve TODO/NEXT, priority, only update title text
+    if not found_headline and t:match("^%*+%s+") then
+      found_headline = true
+      local stars = t:match("^(%*+)")
+      local todo_keyword = t:match("^%*+%s+(TODO)") or t:match("^%*+%s+(NEXT)") or ""
+      local priority = t:match("%[#([ABC])%]") or ""
+      local old_title = t:match("^%*+%s+TODO%s+%[#[ABC]%]%s+(.*)") or
+                        t:match("^%*+%s+TODO%s+(.*)") or
+                        t:match("^%*+%s+NEXT%s+%[#[ABC]%]%s+(.*)") or
+                        t:match("^%*+%s+NEXT%s+(.*)") or
+                        t:match("^%*+%s+(.*)")
+      
+      -- Only update title if it changed
+      if old_title and old_title ~= data.title then
+        local new_headline = stars .. " "
+        if todo_keyword ~= "" then
+          new_headline = new_headline .. todo_keyword .. " "
+        end
+        if priority ~= "" then
+          new_headline = new_headline .. "[#" .. priority .. "] "
+        end
+        new_headline = new_headline .. data.title
+        updated_line = new_headline
+      end
+    end
+    
+    -- Track LOGBOOK drawer
+    if t == ":LOGBOOK:" then
+      in_logbook = true
+    elseif in_logbook and t == ":END:" then
+      in_logbook = false
+    end
+    
+    -- NEVER update LOGBOOK - it's org-specific state tracking
+    if in_logbook or t == ":LOGBOOK:" then
+      table.insert(new_lines, line)
+      goto continue
+    end
+    
+    -- Update headline-level properties drawer
+    if t == ":PROPERTIES:" and found_headline then
+      in_properties = true
+    elseif in_properties and t == ":END:" then
+      in_properties = false
+    elseif in_properties then
+      -- Only update Google Calendar-specific properties
+      if t:match("^:GCAL_ID:") and data.event_id then
+        updated_line = "  :GCAL_ID: " .. data.event_id
+      elseif t:match("^:GCAL_UPDATED:") and data.updated then
+        updated_line = "  :GCAL_UPDATED: " .. data.updated
+      elseif t:match("^:LOCATION:") then
+        if data.location and data.location ~= "" then
+          updated_line = "  :LOCATION: " .. data.location
+        else
+          -- Location removed in Google Calendar
+          updated_line = nil
+        end
+      elseif t:match("^:CALENDAR_ID:") and data.calendar_id then
+        updated_line = "  :CALENDAR_ID: " .. data.calendar_id
+      end
+      -- All other properties (LAST_REPEAT, CATEGORY, custom) are preserved
+    end
+    
+    -- Smart SCHEDULED/DEADLINE update
+    if t:match("^SCHEDULED:") or t:match("^DEADLINE:") then
+      -- Extract current timestamp from line
+      local current_ts = line:match("<([^>]+)>")
+      local has_timespan = line:match("%-%-<")
+      local has_repeater = line:match("%.%+")
+      
+      -- Parse Google Calendar timestamp
+      local gcal_ts = data.timestamp
+      
+      -- Only update if timestamp actually changed
+      -- Compare dates/times, ignore day names
+      local current_date_time = current_ts and current_ts:match("(%d%d%d%d%-%d%d%-%d%d[^%.>]*)")
+      local gcal_date_time = gcal_ts and gcal_ts:match("(%d%d%d%d%-%d%d%-%d%d[^%.>]*)")
+      
+      if current_date_time ~= gcal_date_time then
+        -- Time changed in Google Calendar - update it
+        -- But preserve local format (timespan, repeater)
+        if has_timespan then
+          -- Has timespan - preserve it, update start time only
+          -- Keep the exact format including day name
+          local day_name = gcal_ts:match("%a+") or current_ts:match("%a+") or ""
+          updated_line = line:gsub("<[^>]+>", "<" .. gcal_ts .. ">", 1)
+        elseif has_repeater then
+          -- Has repeater - preserve it
+          local repeater = line:match("(%.%+[^>]+)")
+          updated_line = "  SCHEDULED: <" .. gcal_ts .. " " .. repeater .. ">"
+        else
+          -- Simple timestamp - update it
+          updated_line = "  SCHEDULED: <" .. gcal_ts .. ">"
+        end
+      end
+      -- If timestamp unchanged, preserve line exactly as-is (including repeater, timespan)
+    end
+    
+    if updated_line then
+      table.insert(new_lines, updated_line)
+    end
+    
+    ::continue::
+  end
+  
+  vim.fn.writefile(new_lines, path)
 end
 
 -- IMPORT ---------------------------------------------------------------------
@@ -326,10 +471,12 @@ function M.import_gcal()
       end
       
       if existing_event and event.updated ~= existing_event.gcal_updated then
+        -- Event exists locally and has been updated on Google Calendar
+        -- Use smart update that preserves org-mode features
         local choice, resolved_event = conflict.resolve_conflict(
           existing_event,
           event,
-          cfg.conflict_resolution or "ask"
+          cfg.conflict_resolution or "newest"
         )
         
         if choice == "remote" then
