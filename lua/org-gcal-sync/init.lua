@@ -182,14 +182,30 @@ function M.setup(opts)
       M.config.background_sync_interval,  -- Initial delay
       M.config.background_sync_interval,  -- Repeat interval
       vim.schedule_wrap(function()
-        vim.notify("🔄 Background sync started...", vim.log.levels.DEBUG)
-        M.sync_background()
+        -- Only sync if an org file is currently open in this instance
+        local has_org_buffer = false
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+          if vim.api.nvim_buf_is_loaded(bufnr) then
+            local bufname = vim.api.nvim_buf_get_name(bufnr)
+            if bufname:match("%.org$") then
+              has_org_buffer = true
+              break
+            end
+          end
+        end
+        
+        if has_org_buffer then
+          vim.notify("🔄 Background sync started...", vim.log.levels.DEBUG)
+          M.sync_background()
+        else
+          vim.notify("Skipping background sync - no org files open", vim.log.levels.DEBUG)
+        end
       end)
     )
     
     local minutes = math.floor(M.config.background_sync_interval / 60000)
     vim.notify(
-      string.format("✓ Background sync enabled (every %d minutes)", minutes),
+      string.format("✓ Background sync enabled (every %d minutes, when org files are open)", minutes),
       vim.log.levels.INFO
     )
   end

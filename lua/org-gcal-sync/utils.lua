@@ -1135,25 +1135,96 @@ function M.export_single_file(filepath)
   vim.notify(msg, vim.log.levels.INFO)
 end
 
+-- Helper to check if sync is already in progress (lock file)
+local function is_sync_locked()
+  local lock_file = vim.fn.stdpath("data") .. "/org-gcal-sync.lock"
+  
+  if vim.fn.filereadable(lock_file) == 1 then
+    local lock_time = tonumber(vim.fn.readfile(lock_file)[1] or "0")
+    local current_time = os.time()
+    
+    -- If lock is older than 5 minutes, assume it's stale
+    if current_time - lock_time > 300 then
+      vim.fn.delete(lock_file)
+      return false
+    end
+    
+    return true
+  end
+  
+  return false
+end
+
+local function create_sync_lock()
+  local lock_file = vim.fn.stdpath("data") .. "/org-gcal-sync.lock"
+  vim.fn.writefile({tostring(os.time())}, lock_file)
+end
+
+local function remove_sync_lock()
+  local lock_file = vim.fn.stdpath("data") .. "/org-gcal-sync.lock"
+  vim.fn.delete(lock_file)
+end
+
 function M.sync()
+  -- Check if another instance is already syncing
+  if is_sync_locked() then
+    vim.notify("⏸️  Sync already in progress in another instance", vim.log.levels.WARN)
+    return
+  end
+  
   -- Run full sync asynchronously
   vim.notify("🔄 Starting full sync (export → import)...", vim.log.levels.INFO)
+  create_sync_lock()
+  
   vim.schedule(function()
-    M.export_org()
-    vim.schedule(function()
-      M.import_gcal()
-      vim.notify("✅ Full sync complete!", vim.log.levels.INFO)
+    local success, err = pcall(function()
+      M.export_org()
+      vim.schedule(function()
+        local import_success, import_err = pcall(function()
+          M.import_gcal()
+        end)
+        
+        remove_sync_lock()
+        
+        if import_success then
+          vim.notify("✅ Full sync complete!", vim.log.levels.INFO)
+        else
+          vim.notify("❌ Import failed: " .. tostring(import_err), vim.log.levels.ERROR)
+        end
+      end)
     end)
+    
+    if not success then
+      remove_sync_lock()
+      vim.notify("❌ Export failed: " .. tostring(err), vim.log.levels.ERROR)
+    end
   end)
 end
 
 function M.sync_background()
+  -- Check if another instance is already syncing
+  if is_sync_locked() then
+    vim.notify("Skipping background sync - another instance is syncing", vim.log.levels.DEBUG)
+    return
+  end
+  
   -- Background full sync with minimal notifications
+  create_sync_lock()
+  
   vim.schedule(function()
-    M.export_org()
-    vim.schedule(function()
-      M.import_gcal()
+    local success, err = pcall(function()
+      M.export_org()
+      vim.schedule(function()
+        pcall(function()
+          M.import_gcal()
+        end)
+        remove_sync_lock()
+      end)
     end)
+    
+    if not success then
+      remove_sync_lock()
+    end
   end)
 end
 
