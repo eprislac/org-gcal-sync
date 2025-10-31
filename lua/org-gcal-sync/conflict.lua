@@ -67,78 +67,33 @@ function M.resolve_conflict(local_event, remote_event, strategy)
 end
 
 function M.ask_user(local_event, remote_event)
-  local diff_lines = show_diff(local_event, remote_event)
+  -- In async context, we can't block for user input
+  -- Log the conflict and default to "remote" (Google Calendar wins)
+  vim.notify(
+    string.format(
+      "⚠️ Conflict detected for '%s' - using remote (Google Calendar) version. " ..
+      "Set conflict_resolution='newest' or 'local' to auto-resolve.",
+      local_event.title or remote_event.title
+    ),
+    vim.log.levels.WARN
+  )
   
-  local bufnr = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, diff_lines)
-  vim.api.nvim_buf_set_option(bufnr, 'modifiable', false)
-  vim.api.nvim_buf_set_option(bufnr, 'buftype', 'nofile')
-  
-  local width = 80
-  local height = #diff_lines + 6
-  local win_opts = {
-    relative = 'editor',
-    width = width,
-    height = height,
-    col = (vim.o.columns - width) / 2,
-    row = (vim.o.lines - height) / 2,
-    style = 'minimal',
-    border = 'rounded',
-    title = ' Conflict Resolution ',
-    title_pos = 'center',
-  }
-  
-  local winnr = vim.api.nvim_open_win(bufnr, true, win_opts)
-  
-  vim.api.nvim_buf_set_keymap(bufnr, 'n', 'l', '', {
-    callback = function()
-      vim.api.nvim_win_close(winnr, true)
-      vim.g.org_gcal_conflict_choice = "local"
-    end,
-    noremap = true,
-    silent = true,
-  })
-  
-  vim.api.nvim_buf_set_keymap(bufnr, 'n', 'r', '', {
-    callback = function()
-      vim.api.nvim_win_close(winnr, true)
-      vim.g.org_gcal_conflict_choice = "remote"
-    end,
-    noremap = true,
-    silent = true,
-  })
-  
-  vim.api.nvim_buf_set_keymap(bufnr, 'n', 'q', '', {
-    callback = function()
-      vim.api.nvim_win_close(winnr, true)
-      vim.g.org_gcal_conflict_choice = "skip"
-    end,
-    noremap = true,
-    silent = true,
-  })
-  
-  local footer = {
+  -- Could optionally log details to a file for review
+  local conflict_log = {
+    "=== CONFLICT DETECTED ===",
+    "Event: " .. (local_event.title or remote_event.title),
+    "LOCAL Modified: " .. (local_event.modified or "unknown"),
+    "REMOTE Modified: " .. (remote_event.updated or "unknown"),
+    "Resolution: Using REMOTE (Google Calendar)",
     "",
-    "Choose: [l] Keep Local  [r] Keep Remote  [q] Skip",
   }
-  vim.api.nvim_buf_set_option(bufnr, 'modifiable', true)
-  vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, footer)
-  vim.api.nvim_buf_set_option(bufnr, 'modifiable', false)
   
-  vim.fn.wait(30000, function()
-    return vim.g.org_gcal_conflict_choice ~= nil
-  end)
-  
-  local choice = vim.g.org_gcal_conflict_choice or "skip"
-  vim.g.org_gcal_conflict_choice = nil
-  
-  if choice == "local" then
-    return "local", local_event
-  elseif choice == "remote" then
-    return "remote", remote_event
-  else
-    return "skip", nil
+  -- Log to messages
+  for _, line in ipairs(conflict_log) do
+    vim.notify(line, vim.log.levels.DEBUG)
   end
+  
+  return "remote", remote_event
 end
 
 return M

@@ -24,6 +24,13 @@ return {
     -- Set to false if you prefer to sync manually
     auto_sync_on_save = true,
     
+    -- Conflict resolution strategy (default: "newest")
+    -- "newest" - use the most recently modified version
+    -- "local"  - always prefer local org file
+    -- "remote" - always prefer Google Calendar
+    -- "ask"    - prompt user (WARNING: blocks sync, not recommended)
+    -- conflict_resolution = "newest",
+    
     -- Background sync interval in milliseconds (default: 900000 = 15 minutes)
     -- Set to 0 to disable automatic background sync
     -- background_sync_interval = 900000,  -- 15 minutes
