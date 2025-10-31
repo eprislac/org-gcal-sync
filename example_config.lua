@@ -24,6 +24,12 @@ return {
     -- Set to false if you prefer to sync manually
     auto_sync_on_save = true,
     
+    -- Background sync interval in milliseconds (default: 900000 = 15 minutes)
+    -- Set to 0 to disable automatic background sync
+    -- background_sync_interval = 900000,  -- 15 minutes
+    -- background_sync_interval = 1800000, -- 30 minutes
+    -- background_sync_interval = 0,       -- Disabled
+    
     -- Show dashboard after sync (default: false)
     -- show_sync_status = true,
     

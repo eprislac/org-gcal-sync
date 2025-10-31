@@ -938,14 +938,221 @@ function split_string(input_string, delimiter)
   return result
 end
 
+-- Export a single file
+function M.export_single_file(filepath)
+  if cfg.show_sync_status then
+    dashboard.set_in_progress(true)
+  end
+  
+  local gcal_events = {}
+  local gcal_events_by_id = {}
+  
+  for _, calendar_id in ipairs(cfg.calendars or { "primary" }) do
+    local cal_events = M.get_gcal_events(calendar_id)
+    for k, v in pairs(cal_events) do
+      gcal_events[k] = v
+      if v.id then
+        gcal_events_by_id[v.id] = v
+      end
+    end
+  end
+  
+  local added = 0
+  local updated = 0
+  local tasks_added = 0
+  
+  -- Determine calendar_id based on file location
+  local calendar_id = "primary"
+  for dir, cal_id in pairs(cfg.per_directory_calendars or {}) do
+    if filepath:match("^" .. vim.fn.expand(dir)) then
+      calendar_id = cal_id
+      break
+    end
+  end
+  
+  local lines = vim.fn.readfile(filepath)
+  
+  -- Quick check: skip if no TODO/NEXT
+  local has_todo = false
+  for _, l in ipairs(lines) do
+    if l:match("^%*+%s+TODO") or l:match("^%*+%s+NEXT") then
+      has_todo = true
+      break
+    end
+  end
+  
+  if not has_todo then
+    vim.notify("No TODOs found in file, skipping sync", vim.log.levels.INFO)
+    return
+  end
+  
+  local title, ts, event_id, location, description, is_todo = nil, nil, nil, "", "", false
+  local in_properties = false
+  
+  for _, l in ipairs(lines) do
+    local t = l:gsub("^%s*(.-)%s*$", "%1")
+    
+    if t:match("^%*+%s+TODO") or t:match("^%*+%s+NEXT") then
+      is_todo = true
+      local extracted = t:match("^%*+%s+TODO%s+%[#[ABC]%]%s+(.*)")
+      if not extracted then
+        extracted = t:match("^%*+%s+TODO%s+(.*)")
+      end
+      if not extracted then
+        extracted = t:match("^%*+%s+TODO$") and "" or nil
+      end
+      if not extracted then
+        extracted = t:match("^%*+%s+NEXT%s+%[#[ABC]%]%s+(.*)")
+      end
+      if not extracted then
+        extracted = t:match("^%*+%s+NEXT%s+(.*)")
+      end
+      if not extracted then
+        extracted = t:match("^%*+%s+NEXT$") and "" or nil
+      end
+      if extracted then
+        title = extracted
+      end
+    elseif t:match("^%*+%s") and not title then
+      title = t:match("^%*+%s+(.*)")
+    end
+    
+    if t:match("SCHEDULED:") or t:match("DEADLINE:") then
+      ts = t:match("<([^>]+)>")
+    elseif t == ":PROPERTIES:" then
+      in_properties = true
+    elseif t == ":END:" then
+      in_properties = false
+    elseif in_properties and t:match("^:GCAL_ID:") then
+      event_id = t:match("^:GCAL_ID:%s*(.+)%s*$")
+    elseif in_properties and t:match("^:LOCATION:") then
+      location = t:match("^:LOCATION:%s*(.+)%s*$") or ""
+    elseif not in_properties and not t:match("^[#:]") and not t:match("^%*") and t ~= "" then
+      if description ~= "" then description = description .. "\n" end
+      description = description .. t:gsub("^%s+", "")
+    end
+  end
+  
+  -- Handle TODO with scheduled time -> Calendar
+  if is_todo and title and ts then
+    local start_time, end_time = parse_org_timestamp(ts)
+    if start_time then
+      local event_data = { summary = title }
+      
+      if start_time:match("^%d%d%d%d%-%d%d%-%d%d$") then
+        event_data.start = { date = start_time }
+        local year, month, day = start_time:match("(%d%d%d%d)%-(%d%d)%-(%d%d)")
+        local next_day = os.time({
+          year = tonumber(year),
+          month = tonumber(month),
+          day = tonumber(day) + 1,
+          hour = 0,
+          min = 0,
+        })
+        event_data["end"] = { date = os.date("!%Y-%m-%d", next_day) }
+      else
+        event_data.start = { dateTime = start_time, timeZone = "UTC" }
+        
+        if end_time then
+          event_data["end"] = { dateTime = end_time, timeZone = "UTC" }
+        else
+          local year = tonumber(start_time:match("(%d%d%d%d)"))
+          local month = tonumber(start_time:match("%d%d%d%d%-(%d%d)"))
+          local day = tonumber(start_time:match("%d%d%d%d%-%d%d%-(%d%d)"))
+          local hour = tonumber(start_time:match("T(%d%d)"))
+          local min = tonumber(start_time:match("T%d%d:(%d%d)"))
+          
+          local total_minutes = min + 30
+          local add_hours = math.floor(total_minutes / 60)
+          local end_min = total_minutes % 60
+          local end_hour = hour + add_hours
+          
+          if end_hour >= 24 then
+            end_hour = end_hour - 24
+            day = day + 1
+          end
+          
+          event_data["end"] = {
+            dateTime = string.format("%04d-%02d-%02dT%02d:%02d:00Z", year, month, day, end_hour, end_min),
+            timeZone = "UTC",
+          }
+        end
+      end
+      
+      if location and location ~= "" then
+        event_data.location = location
+      end
+      
+      if description and description ~= "" then
+        event_data.description = description
+      end
+      
+      if event_id and gcal_events_by_id[event_id] then
+        local result, err = gcal_api.update_event(event_id, event_data, calendar_id)
+        if result then
+          updated = updated + 1
+        else
+          vim.notify("Failed to update event: " .. (err or "unknown"), vim.log.levels.WARN)
+        end
+      else
+        local key = M.make_key(title, ts, event_id)
+        if not gcal_events[key] then
+          local result, err = gcal_api.create_event(event_data, calendar_id)
+          if result then
+            added = added + 1
+            if result.id then
+              update_org_file_with_gcal_id(filepath, result.id, result.updated)
+            end
+          else
+            vim.notify("Failed to create event: " .. (err or "unknown"), vim.log.levels.WARN)
+          end
+        end
+      end
+    end
+  elseif is_todo and title and not ts then
+    -- Unscheduled TODO -> Task
+    local task_data = { title = title }
+    if description and description ~= "" then
+      task_data.notes = description
+    end
+    
+    local result, err = gcal_api.create_task(task_data)
+    if result then
+      tasks_added = tasks_added + 1
+      if result.id then
+        update_org_file_with_gcal_id(filepath, result.id, result.updated)
+      end
+    else
+      vim.notify("Failed to create task: " .. (err or "unknown"), vim.log.levels.WARN)
+    end
+  end
+  
+  if cfg.show_sync_status then
+    dashboard.set_in_progress(false)
+  end
+  
+  local msg = string.format("File sync: Added: %d, Updated: %d, Tasks: %d", added, updated, tasks_added)
+  vim.notify(msg, vim.log.levels.INFO)
+end
+
 function M.sync()
-  -- Run sync asynchronously so it doesn't block the UI
-  vim.notify("🔄 Starting sync (export → import)...", vim.log.levels.INFO)
+  -- Run full sync asynchronously
+  vim.notify("🔄 Starting full sync (export → import)...", vim.log.levels.INFO)
   vim.schedule(function()
     M.export_org()
     vim.schedule(function()
       M.import_gcal()
-      vim.notify("✅ Sync complete!", vim.log.levels.INFO)
+      vim.notify("✅ Full sync complete!", vim.log.levels.INFO)
+    end)
+  end)
+end
+
+function M.sync_background()
+  -- Background full sync with minimal notifications
+  vim.schedule(function()
+    M.export_org()
+    vim.schedule(function()
+      M.import_gcal()
     end)
   end)
 end

@@ -12,9 +12,11 @@ M.config = {
   per_directory_calendars = {},
   webhook_port = nil,
   show_sync_status = false,
+  background_sync_interval = 900000,  -- 15 minutes in milliseconds (0 to disable)
 }
 
 local _setup_done = false
+local _sync_timer = nil
 
 -- Auto-setup with defaults if not already setup
 local function ensure_setup()
@@ -27,6 +29,14 @@ end
 M.sync = function()
   ensure_setup()
   if M._sync then M._sync() end
+end
+M.sync_background = function()
+  ensure_setup()
+  if M._sync_background then M._sync_background() end
+end
+M.export_single_file = function(filepath)
+  ensure_setup()
+  if M._export_single_file then M._export_single_file(filepath) end
 end
 M.import_gcal = function()
   ensure_setup()
@@ -54,7 +64,8 @@ function M.setup(opts)
   end
 
   -- Register commands
-  vim.api.nvim_create_user_command("SyncOrgGcal", function() M.sync() end, { desc = "Sync org ↔ gcal" })
+  vim.api.nvim_create_user_command("SyncOrgGcal", function() M.sync() end, { desc = "Sync org ↔ gcal (full)" })
+  vim.api.nvim_create_user_command("SyncOrgGcalBackground", function() M.sync_background() end, { desc = "Background full sync" })
   vim.api.nvim_create_user_command("ImportGcal", function() M.import_gcal() end, { desc = "Import from gcal" })
   vim.api.nvim_create_user_command("ExportOrg", function() M.export_org() end, { desc = "Export to gcal" })
   vim.api.nvim_create_user_command("OrgGcalAuth", function()
@@ -100,6 +111,19 @@ function M.setup(opts)
     })
   end, { desc = "List available calendars" })
   
+  vim.api.nvim_create_user_command("OrgGcalStopBackgroundSync", function()
+    M.stop_background_sync()
+  end, { desc = "Stop background sync timer" })
+  
+  vim.api.nvim_create_user_command("OrgGcalRestartBackgroundSync", function(opts)
+    local interval = tonumber(opts.args)
+    if interval then
+      M.restart_background_sync(interval * 60000)  -- Convert minutes to milliseconds
+    else
+      M.restart_background_sync(M.config.background_sync_interval)
+    end
+  end, { nargs = "?", desc = "Restart background sync (optionally with new interval in minutes)" })
+  
   -- Add roam dirs to org_agenda_files instead of agenda_dir
   if #M.config.org_roam_dirs > 0 then
     vim.g.org_agenda_files = vim.g.org_agenda_files or {}
@@ -116,19 +140,20 @@ function M.setup(opts)
     vim.api.nvim_create_autocmd("BufWritePost", {
       pattern = "*.org",
       callback = function()
+        local filepath = vim.fn.expand("%:p")
         local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
         for _, line in ipairs(lines) do
           if line:match("SCHEDULED:") or line:match("DEADLINE:") then
-            -- Schedule async so save completes immediately
+            -- Sync only this file for speed
             vim.defer_fn(function()
-              vim.notify("🔄 Starting background sync...", vim.log.levels.INFO)
-              M.sync()
-            end, 100)  -- Small delay to ensure file is written
+              vim.notify("🔄 Syncing current file...", vim.log.levels.INFO)
+              M.export_single_file(filepath)
+            end, 100)
             break
           end
         end
       end,
-      desc = "Auto-sync org-gcal on save if file contains scheduled/deadline items"
+      desc = "Auto-sync single org file on save if it contains scheduled/deadline items"
     })
   end
 
@@ -137,10 +162,70 @@ function M.setup(opts)
   if ok then
     utils.set_config(M.config)
     M._sync = utils.sync
+    M._sync_background = utils.sync_background
+    M._export_single_file = utils.export_single_file
     M._import_gcal = utils.import_gcal
     M._export_org = utils.export_org
   else
     vim.notify("org-gcal-sync: utils failed to load: " .. utils, vim.log.levels.ERROR)
+  end
+  
+  -- Setup background sync timer if enabled
+  if M.config.background_sync_interval > 0 then
+    if _sync_timer then
+      _sync_timer:stop()
+      _sync_timer:close()
+    end
+    
+    _sync_timer = vim.loop.new_timer()
+    _sync_timer:start(
+      M.config.background_sync_interval,  -- Initial delay
+      M.config.background_sync_interval,  -- Repeat interval
+      vim.schedule_wrap(function()
+        vim.notify("🔄 Background sync started...", vim.log.levels.DEBUG)
+        M.sync_background()
+      end)
+    )
+    
+    local minutes = math.floor(M.config.background_sync_interval / 60000)
+    vim.notify(
+      string.format("✓ Background sync enabled (every %d minutes)", minutes),
+      vim.log.levels.INFO
+    )
+  end
+end
+
+-- Stop background sync timer
+function M.stop_background_sync()
+  if _sync_timer then
+    _sync_timer:stop()
+    _sync_timer:close()
+    _sync_timer = nil
+    vim.notify("Background sync stopped", vim.log.levels.INFO)
+  end
+end
+
+-- Restart background sync timer with new interval
+function M.restart_background_sync(interval_ms)
+  M.stop_background_sync()
+  if interval_ms and interval_ms > 0 then
+    M.config.background_sync_interval = interval_ms
+    
+    _sync_timer = vim.loop.new_timer()
+    _sync_timer:start(
+      interval_ms,
+      interval_ms,
+      vim.schedule_wrap(function()
+        vim.notify("🔄 Background sync started...", vim.log.levels.DEBUG)
+        M.sync_background()
+      end)
+    )
+    
+    local minutes = math.floor(interval_ms / 60000)
+    vim.notify(
+      string.format("✓ Background sync restarted (every %d minutes)", minutes),
+      vim.log.levels.INFO
+    )
   end
 end
 
