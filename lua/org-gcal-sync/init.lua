@@ -60,14 +60,14 @@ function M.setup(opts)
     M.config.org_dirs = M.config.org_roam_dirs
   end
   
-  -- Set default agenda_dir if not specified and no org_dirs
-  if not M.config.agenda_dir and #M.config.org_dirs == 0 then
-    M.config.agenda_dir = vim.fn.stdpath("data") .. "/org-gcal/agenda"
+  -- Warn if neither org_dirs nor agenda_dir are configured
+  if #M.config.org_dirs == 0 and not M.config.agenda_dir then
+    vim.notify("org-gcal-sync: Please configure 'org_dirs' in your setup", vim.log.levels.WARN)
   end
   
-  -- Create agenda_dir if it's still used
+  -- Warn if deprecated agenda_dir is still being used
   if M.config.agenda_dir then
-    vim.fn.mkdir(M.config.agenda_dir, "p")
+    vim.notify("org-gcal-sync: 'agenda_dir' is deprecated, use 'org_dirs' instead", vim.log.levels.WARN)
   end
 
   -- Register commands

@@ -84,6 +84,10 @@ M.get_existing_roam_events = function()
   
   -- Use first org dir for imports, or fallback to agenda_dir
   local import_dir = cfg.org_dirs[1] or cfg.agenda_dir
+  if not import_dir then
+    vim.notify("org-gcal-sync: No org_dirs configured. Please add org_dirs to your setup.", vim.log.levels.ERROR)
+    return map
+  end
   local expanded_dir = vim.fn.expand(import_dir)
   local files = vim.fn.globpath(expanded_dir, "**/*.org", false, true)
   
@@ -416,6 +420,14 @@ function M.import_gcal()
   
   -- Use first org dir for imports
   local import_dir = cfg.org_dirs[1] or cfg.agenda_dir
+  if not import_dir then
+    vim.notify("org-gcal-sync: No org_dirs configured. Please add org_dirs to your setup.", vim.log.levels.ERROR)
+    if cfg.show_sync_status then
+      dashboard.add_error("No org_dirs configured")
+      dashboard.set_in_progress(false)
+    end
+    return
+  end
   local expanded_import_dir = vim.fn.expand(import_dir)
   
   for _, calendar_id in ipairs(calendars) do
