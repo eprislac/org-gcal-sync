@@ -42,3 +42,4 @@ All notable changes to this project will be documented in this file.
 - Event export now correctly handles event metadata (location, description)
 - Timezone handling improved with UTC conversion
 - Property parsing in org files more robust
+- **CRITICAL**: Authentication failures no longer cause deletion of local files - sync now aborts safely when Google API is unreachable or token refresh fails

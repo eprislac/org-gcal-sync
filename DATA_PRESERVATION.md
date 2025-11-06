@@ -456,6 +456,55 @@ The plugin:
 - ✅ Never overwrites existing files completely
 - ✅ Treats local org file as source of truth for org-specific features
 
+## Authentication Failure Protection
+
+**Critical Safety Feature:** The plugin will NEVER delete your local files if it cannot authenticate with Google Calendar.
+
+### What Happens on Auth Failure
+
+If the Google token fails to refresh or expires:
+- ✅ Sync is aborted immediately
+- ✅ All local files are preserved
+- ✅ Clear error message is shown
+- ✅ No deletion of any local data
+
+**Example scenario:**
+```
+Your token expires → Plugin tries to sync → Auth fails
+→ Error: "Failed to refresh token: Invalid credentials"
+→ Sync aborted, NO files deleted ✅
+```
+
+### Before the Fix (Dangerous!)
+
+Previously, if authentication failed:
+- ❌ API would return empty event list
+- ❌ Plugin would think all events were deleted from Google Calendar
+- ❌ Plugin would delete ALL local .org files with GCAL_ID properties
+- ❌ You could lose important data!
+
+### After the Fix (Safe!)
+
+Now, if authentication fails:
+- ✅ API returns `nil` instead of empty list
+- ✅ Plugin detects the error condition
+- ✅ Plugin aborts sync immediately
+- ✅ No files are touched
+- ✅ User is prompted to re-authenticate
+
+### Test Coverage
+
+This critical safety feature is tested in:
+```
+tests/plenary/test_auth_failure.lua
+```
+
+**4 tests covering:**
+- Token refresh failure
+- Network errors
+- API unreachable
+- Normal deletion still works when sync succeeds
+
 ## Troubleshooting
 
 ### "My priorities disappeared!"
@@ -477,6 +526,15 @@ Timespans ARE exported to Google Calendar as start/end times. However:
 - Local org file always keeps the full `<start>--<end>` format
 - Google Calendar shows them as event duration
 - Reimporting won't lose the timespan
+
+### "Authentication failed and I got an error"
+
+This is GOOD! The plugin is protecting your data:
+1. Don't panic - your files are safe
+2. Re-authenticate: `:OrgGcalAuth`
+3. Try syncing again: `:SyncOrgGcal`
+
+The plugin will never delete your files if it can't reach Google Calendar.
 
 ## Summary
 

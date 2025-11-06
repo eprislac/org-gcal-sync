@@ -45,7 +45,7 @@ M.get_gcal_events = function(calendar_id)
     if cfg.show_sync_status then
       dashboard.add_error("Failed to fetch events: " .. (err or "unknown error"))
     end
-    return {}
+    return nil, err
   end
 
   local ev = {}
@@ -431,14 +431,15 @@ function M.import_gcal()
   local expanded_import_dir = vim.fn.expand(import_dir)
   
   for _, calendar_id in ipairs(calendars) do
-    local gcal_events = M.get_gcal_events(calendar_id)
+    local gcal_events, err = M.get_gcal_events(calendar_id)
     
     if not gcal_events then
-      vim.notify("Failed to fetch Google Calendar events from " .. calendar_id, vim.log.levels.ERROR)
+      vim.notify("Failed to fetch Google Calendar events from " .. calendar_id .. ": " .. (err or "unknown error"), vim.log.levels.ERROR)
       if cfg.show_sync_status then
         dashboard.add_error("Failed to fetch events from calendar: " .. calendar_id)
+        dashboard.set_in_progress(false)
       end
-      goto continue
+      return
     end
 
     local imported = 0
@@ -533,8 +534,6 @@ function M.import_gcal()
         last_sync = os.date("%Y-%m-%d %H:%M:%S"),
       })
     end
-    
-    ::continue::
   end
 
   -- Delete events that no longer exist in Google Calendar
@@ -829,6 +828,14 @@ function M.export_org()
   
   for _, calendar_id in ipairs(cfg.calendars or { "primary" }) do
     local cal_events = M.get_gcal_events(calendar_id)
+    if not cal_events then
+      vim.notify("Failed to fetch events from calendar " .. calendar_id .. ", aborting export to prevent data loss", vim.log.levels.ERROR)
+      if cfg.show_sync_status then
+        dashboard.add_error("Failed to fetch events from calendar: " .. calendar_id)
+        dashboard.set_in_progress(false)
+      end
+      return
+    end
     for k, v in pairs(cal_events) do
       gcal_events[k] = v
       if v.id then
@@ -1112,6 +1119,14 @@ function M.export_single_file(filepath)
   
   for _, calendar_id in ipairs(cfg.calendars or { "primary" }) do
     local cal_events = M.get_gcal_events(calendar_id)
+    if not cal_events then
+      vim.notify("Failed to fetch events from calendar " .. calendar_id .. ", aborting single file export to prevent data loss", vim.log.levels.ERROR)
+      if cfg.show_sync_status then
+        dashboard.add_error("Failed to fetch events from calendar: " .. calendar_id)
+        dashboard.set_in_progress(false)
+      end
+      return
+    end
     for k, v in pairs(cal_events) do
       gcal_events[k] = v
       if v.id then
