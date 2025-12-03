@@ -89,7 +89,7 @@ Reload your shell or restart Neovim to apply the changes.
   dependencies = { 
     "nvim-lua/plenary.nvim",
     "nvim-orgmode/orgmode", 
-    "jmbuhr/org-roam.nvim"  -- optional
+    "chipsenkbeil/org-roam.nvim"  -- optional
   },
   config = function()
     require("org-gcal-sync").setup({

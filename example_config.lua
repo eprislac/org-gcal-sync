@@ -6,7 +6,7 @@ return {
   dependencies = { 
     "nvim-lua/plenary.nvim",
     "nvim-orgmode/orgmode", 
-    "jmbuhr/org-roam.nvim"  -- optional, for backlinks
+    "chipsenkbeil/org-roam.nvim"  -- optional, for backlinks
   },
   opts = {
     -- Directories containing your org notes
