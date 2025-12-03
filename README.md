@@ -37,7 +37,7 @@ Google Calendar events, ensuring I never miss an important meeting or deadline.
 - Neovim 0.9+
 - [plenary.nvim](https://github.com/nvim-lua/plenary.nvim)
 - [nvim-orgmode/orgmode](https://github.com/nvim-orgmode/orgmode)
-- [org-roam.nvim](https://github.com/jmbuhr/org-roam.nvim) (optional, for backlinks)
+- [org-roam.nvim](https://github.com/chipsenkbeil/org-roam.nvim) (optional, for backlinks)
 - Google Calendar API credentials (see setup below)
 
 ---
